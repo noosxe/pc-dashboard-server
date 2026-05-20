@@ -60,7 +60,154 @@ This document outlines the selected tools, libraries, and protocols to implement
 
 ---
 
-## 4. Security Integration (TODO(security))
+## 4. Modularity & Swappable Interface Design
+
+To enable local mocking, unit testing, and simulation, all hardware telemetry gathering and ADB connectivity components are abstracted behind strict Go interfaces. Concrete implementations can be seamlessly swapped at runtime based on configuration settings or CLI execution flags.
+
+```mermaid
+graph TD
+    DaemonCore[Daemon Engine] -->|uses| MetricsReader[MetricsReader Interface]
+    DaemonCore -->|uses| ADBClient[ADBClient Interface]
+    
+    MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
+    MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
+    
+    ADBClient -.->|Implementation| SocketADB[SocketADBClient <br>Real TCP port 5037]
+    ADBClient -.->|Implementation| MockADB[MockADBClient <br>Simulated physical triggers]
+```
+
+### 4.1. Metrics Collection Interface (`MetricsReader`)
+The metrics gathering routine communicates exclusively through this interface:
+
+```go
+package metrics
+
+// CPUMetrics holds processor performance telemetry.
+type CPUMetrics struct {
+    UsagePercent float64 `json:"usage_percent"`
+    TempCelsius  float64 `json:"temp_celsius"`
+}
+
+// RAMMetrics holds physical memory telemetry.
+type RAMMetrics struct {
+    UsedBytes  uint64  `json:"used_bytes"`
+    TotalBytes uint64  `json:"total_bytes"`
+    Percentage float64 `json:"percentage"`
+}
+
+// GPUMetrics holds graphics processor telemetry.
+type GPUMetrics struct {
+    UsagePercent   float64 `json:"usage_percent"`
+    TempCelsius    float64 `json:"temp_celsius"`
+    VramUsedBytes  uint64  `json:"vram_used_bytes"`
+    VramTotalBytes uint64  `json:"vram_total_bytes"`
+}
+
+// SystemMetrics combines all gathered hardware statistics.
+type SystemMetrics struct {
+    CPU CPUMetrics `json:"cpu"`
+    RAM RAMMetrics `json:"ram"`
+    GPU GPUMetrics `json:"gpu"`
+}
+
+// MetricsReader defines the contract for reading system performance telemetry.
+type MetricsReader interface {
+    // ReadCPU returns overall CPU usage percentages and core package temperatures.
+    ReadCPU() (CPUMetrics, error)
+    
+    // ReadRAM returns physical host RAM stats (used, total, percentage).
+    ReadRAM() (RAMMetrics, error)
+    
+    // ReadGPU returns graphics processor core usage, temperature, and VRAM utilization.
+    ReadGPU() (GPUMetrics, error)
+}
+```
+
+*   **Implementations**:
+    1.  `HostMetricsReader`: Production reader querying `gopsutil` for CPU/RAM, and dynamically routing GPU checks to NVML or open sysfs hooks.
+    2.  `MockMetricsReader`: Telemetry emulator generating smooth mock waves (sine/cosine curves) for CPU, GPU utilization, and temperatures without requiring hardware sensors.
+
+### 4.2. ADB Transport Interface (`ADBClient`)
+The USB autodiscovery engine uses this interface to communicate with the Android companion device:
+
+```go
+package adb
+
+import "context"
+
+// DeviceState represents the current state of a physical USB target device.
+type DeviceState string
+
+const (
+    StateOnline  DeviceState = "online"
+    StateOffline DeviceState = "offline"
+)
+
+// DeviceEvent represents a hotplug modification tracked by ADB.
+type DeviceEvent struct {
+    Serial string
+    State  DeviceState
+}
+
+// ADBClient defines the contract for ADB command and connection lifecycle routines.
+type ADBClient interface {
+    // TrackDevices streams hotplug device connection changes over an event channel.
+    TrackDevices(ctx context.Context) (<-chan DeviceEvent, error)
+    
+    // ReversePort configures port-redirection mapping from target device back to the host PC.
+    ReversePort(ctx context.Context, serial string, localPort, devicePort int) error
+    
+    // LaunchApp executes shell sequences to launch the companion app activity on the target.
+    LaunchApp(ctx context.Context, serial string, pkg, activity string) error
+    
+    // WakeDevice wakes up the target screen from low-power sleep states.
+    WakeDevice(ctx context.Context, serial string) error
+}
+```
+
+*   **Implementations**:
+    1.  `TCPADBClient`: Production client communicating directly over TCP socket streams with the background ADB daemon on port `5037`.
+    2.  `MockADBClient`: Simulation client that triggers artificial `device online/offline` events, allowing full testing of the websocket handshake loops inside devcontainers.
+
+### 4.3. Application Package & Module Layout
+
+To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
+
+```
+pc-dashboard-server/
+├── cmd/                          # Command-Line Interfaces (Cobra-based)
+│   ├── root.go                   # Root Command router
+│   └── start.go                  # Bootstrap command: loads configuration and boots modules
+├── pkg/
+│   ├── config/                   # Configuration management module
+│   │   ├── config.go             # Strongly-typed configuration structures
+│   │   └── loader.go             # Koanf-based configuration load logic
+│   ├── metrics/                  # Hardware telemetry gathering module
+│   │   ├── metrics.go            # MetricsReader interface & telemetry struct models
+│   │   ├── host_reader.go        # Production MetricsReader (gopsutil & sysfs)
+│   │   └── mock_reader.go        # Simulated metrics wave generator (sine-wave telemetry)
+│   ├── adb/                      # USB/ADB Autodiscovery and communication module
+│   │   ├── client.go             # ADBClient interface & connection structures
+│   │   ├── socket_client.go      # Production ADBClient (direct socket TCP:5037)
+│   │   └── mock_client.go        # Simulated ADB physical connection generator
+│   ├── websocket/                # Multi-client local websocket communication module
+│   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
+│   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
+│   └── daemon/                   # Daemon orchestrator and runtime coordinator module
+│       └── engine.go             # Core daemon loop coupling ADB, Metrics, and WebSockets
+└── main.go                       # Minimal application entry point
+```
+
+#### Module Interactions & Orchestration
+
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader` and `ADBClient`.
+2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
+3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second and pushes the resulting frames to the WebSocket broadcaster.
+
+---
+
+## 5. Security Integration (TODO(security))
 
 *   **Secure Dependency Verification**: Every library will be checked to confirm it contains zero known CVEs (Common Vulnerabilities and Exposures) prior to final inclusion.
 *   **Local TCP Boundary**:
