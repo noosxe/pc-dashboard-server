@@ -2,7 +2,7 @@ package daemon
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os/exec"
 	"sync"
 	"time"
@@ -22,6 +22,7 @@ type TelemetryPayload struct {
 
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
+	logger     *slog.Logger
 	cfg        *config.Config
 	metrics    metrics.MetricsReader
 	adbClient  adb.ADBClient
@@ -33,8 +34,9 @@ type Engine struct {
 }
 
 // NewEngine constructs a central Orchestrator.
-func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient) *Engine {
+func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
+		logger:    daemonLogger,
 		cfg:       cfg,
 		metrics:   mr,
 		adbClient: ac,
@@ -43,8 +45,8 @@ func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient) *
 	}
 
 	// Wire callbacks into the WebSocket connection pool
-	e.pool = websocket.NewConnectionPool(e.handleConfigChange, e.handleAction)
-	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool)
+	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction)
+	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, websocketLogger)
 
 	return e
 }
@@ -59,7 +61,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	// 1. Boot WebSocket HTTP listener thread
 	go func() {
 		if err := e.wsServer.Start(gCtx); err != nil {
-			log.Printf("[Daemon] WebSocket server terminated with error: %v", err)
+			e.logger.Error("WebSocket server terminated with error", "error", err)
 			errChan <- err
 		}
 	}()
@@ -67,7 +69,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	// 2. Boot ADB Hotplug tracking thread
 	go func() {
 		if err := e.runADBTracker(gCtx); err != nil {
-			log.Printf("[Daemon] ADB device tracking terminated: %v", err)
+			e.logger.Error("ADB device tracking terminated", "error", err)
 			errChan <- err
 		}
 	}()
@@ -77,7 +79,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.runTelemetryLoop(gCtx)
 	}()
 
-	log.Printf("[Daemon] PC Dashboard core engine successfully booted.")
+	e.logger.Info("PC Dashboard core engine successfully booted")
 
 	// Wait for termination signal or errors
 	select {
@@ -85,7 +87,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		cancel()
 		return err
 	case <-ctx.Done():
-		log.Printf("[Daemon] Shutting down core engine...")
+		e.logger.Info("Shutting down core engine")
 		return nil
 	}
 }
@@ -107,10 +109,10 @@ func (e *Engine) runADBTracker(ctx context.Context) error {
 			}
 
 			if ev.State == adb.StateOnline {
-				log.Printf("[Daemon] USB device connected: %s. Initiating bootstrap...", ev.Serial)
+				e.logger.Info("USB device connected. Initiating bootstrap", "serial", ev.Serial)
 				go e.bootstrapDevice(ctx, ev.Serial)
 			} else {
-				log.Printf("[Daemon] USB device disconnected: %s.", ev.Serial)
+				e.logger.Info("USB device disconnected", "serial", ev.Serial)
 			}
 		}
 	}
@@ -120,23 +122,23 @@ func (e *Engine) runADBTracker(ctx context.Context) error {
 func (e *Engine) bootstrapDevice(ctx context.Context, serial string) {
 	// 1. Wake screen
 	if err := e.adbClient.WakeDevice(ctx, serial); err != nil {
-		log.Printf("[Daemon] Failed to wake screen on %s: %v", serial, err)
+		e.logger.Error("Failed to wake screen", "serial", serial, "error", err)
 	}
 
 	// 2. Launch Android Companion App
 	pkg := e.cfg.ADB.TargetPackage
 	act := e.cfg.ADB.TargetActivity
 	if err := e.adbClient.LaunchApp(ctx, serial, pkg, act); err != nil {
-		log.Printf("[Daemon] Failed to launch companion app on %s: %v", serial, err)
+		e.logger.Error("Failed to launch companion app", "serial", serial, "error", err)
 	}
 
 	// 3. Reverse Tunneling
 	localPort := e.cfg.Server.Port
 	devicePort := e.cfg.Server.Port
 	if err := e.adbClient.ReversePort(ctx, serial, localPort, devicePort); err != nil {
-		log.Printf("[Daemon] Failed to configure reverse port tunnel on %s: %v", serial, err)
+		e.logger.Error("Failed to configure reverse port tunnel", "serial", serial, "error", err)
 	} else {
-		log.Printf("[Daemon] Successfully configured reverse port tunnel for serial %s", serial)
+		e.logger.Info("Successfully configured reverse port tunnel", "serial", serial)
 	}
 }
 
@@ -159,17 +161,17 @@ func (e *Engine) runTelemetryLoop(ctx context.Context) {
 			// Read performance telemetry
 			cpuMetrics, err := e.metrics.ReadCPU()
 			if err != nil {
-				log.Printf("[Daemon] Error collecting CPU metrics: %v", err)
+				e.logger.Error("Error collecting CPU metrics", "error", err)
 			}
 
 			ramMetrics, err := e.metrics.ReadRAM()
 			if err != nil {
-				log.Printf("[Daemon] Error collecting RAM metrics: %v", err)
+				e.logger.Error("Error collecting RAM metrics", "error", err)
 			}
 
 			gpuMetrics, err := e.metrics.ReadGPU()
 			if err != nil {
-				log.Printf("[Daemon] Error collecting GPU metrics: %v", err)
+				e.logger.Error("Error collecting GPU metrics", "error", err)
 			}
 
 			sysMetrics := metrics.SystemMetrics{
@@ -192,7 +194,7 @@ func (e *Engine) runTelemetryLoop(ctx context.Context) {
 
 // handleConfigChange handles settings modifications requested by clients.
 func (e *Engine) handleConfigChange(intervalMs int) {
-	log.Printf("[Daemon] Update interval changed to %d ms", intervalMs)
+	e.logger.Info("Update interval changed", "interval_ms", intervalMs)
 	duration := time.Duration(intervalMs) * time.Millisecond
 
 	e.intervalMu.Lock()
@@ -204,20 +206,20 @@ func (e *Engine) handleConfigChange(intervalMs int) {
 
 // handleAction executes commands requested by companion dashboards.
 func (e *Engine) handleAction(command string) {
-	log.Printf("[Daemon] Control action requested: %s", command)
+	e.logger.Info("Control action requested", "command", command)
 
 	switch command {
 	case "suspend":
-		log.Printf("[Daemon] Executing local system suspend...")
+		e.logger.Info("Executing local system suspend")
 		// Security: Rigid execution using hardcoded path and static argument.
 		cmd := exec.Command("systemctl", "suspend")
 		if err := cmd.Run(); err != nil {
-			log.Printf("[Daemon] System suspend execution failed: %v", err)
+			e.logger.Error("System suspend execution failed", "error", err)
 		}
 	case "disconnect":
-		log.Printf("[Daemon] Companion disconnect requested. Tearing down active telemetry streaming.")
+		e.logger.Info("Companion disconnect requested. Tearing down active telemetry streaming.")
 		// The client closes its connection, which will trigger pool cleanup automatically.
 	default:
-		log.Printf("[Daemon] Unknown control action: %s", command)
+		e.logger.Warn("Unknown control action", "command", command)
 	}
 }

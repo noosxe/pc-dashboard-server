@@ -3,9 +3,10 @@ package cmd
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
@@ -20,6 +21,9 @@ var (
 	emulateMetrics bool
 	mockADB        bool
 	serverPort     int
+	verbose        bool
+	logLevel       string
+	logFormat      string
 )
 
 // StartCmd represents the start subcommand that launches the core daemon.
@@ -34,6 +38,12 @@ and loopback WebSocket streaming server.`,
 		if serverPort != 0 {
 			cliFlags["server.port"] = serverPort
 		}
+		if logLevel != "" {
+			cliFlags["daemon.log_level"] = logLevel
+		}
+		if logFormat != "" {
+			cliFlags["daemon.log_format"] = logFormat
+		}
 
 		// 2. Load merged configurations via Koanf
 		cfg, err := config.LoadConfig(configPath, cliFlags)
@@ -41,26 +51,61 @@ and loopback WebSocket streaming server.`,
 			return err
 		}
 
-		log.Printf("[CLI] Config successfully loaded. Log level: %s", cfg.Daemon.LogLevel)
+		// Verbose overrides log level unconditionally
+		if verbose {
+			cfg.Daemon.LogLevel = "debug"
+		}
+
+		// Initialize structured logging handler
+		var slogLevel slog.Level
+		switch strings.ToLower(cfg.Daemon.LogLevel) {
+		case "debug":
+			slogLevel = slog.LevelDebug
+		case "info":
+			slogLevel = slog.LevelInfo
+		case "warn", "warning":
+			slogLevel = slog.LevelWarn
+		case "error":
+			slogLevel = slog.LevelError
+		default:
+			slogLevel = slog.LevelInfo
+		}
+
+		var handler slog.Handler
+		opts := &slog.HandlerOptions{Level: slogLevel}
+		if strings.ToLower(cfg.Daemon.LogFormat) == "json" {
+			handler = slog.NewJSONHandler(os.Stderr, opts)
+		} else {
+			handler = slog.NewTextHandler(os.Stderr, opts)
+		}
+		logger := slog.New(handler)
+
+		cliLogger := logger.With("module", "cli")
+		metricsLogger := logger.With("module", "metrics")
+		adbLogger := logger.With("module", "adb")
+		websocketLogger := logger.With("module", "websocket")
+		daemonLogger := logger.With("module", "daemon")
+
+		cliLogger.Info("Config successfully loaded", "log_level", cfg.Daemon.LogLevel, "log_format", cfg.Daemon.LogFormat)
 
 		// 3. Resolve metrics provider based on emulation flags
 		var mr metrics.MetricsReader
 		if emulateMetrics {
-			log.Printf("[CLI] Emulation Mode enabled: Using MockMetricsReader (Sine-wave telemetry)")
-			mr = metrics.NewMockMetricsReader()
+			cliLogger.Info("Emulation Mode enabled: Using MockMetricsReader (Sine-wave telemetry)")
+			mr = metrics.NewMockMetricsReader(metricsLogger)
 		} else {
-			log.Printf("[CLI] Host Mode enabled: Using HostMetricsReader (Direct OS queries)")
-			mr = metrics.NewHostMetricsReader()
+			cliLogger.Info("Host Mode enabled: Using HostMetricsReader (Direct OS queries)")
+			mr = metrics.NewHostMetricsReader(metricsLogger)
 		}
 
 		// 4. Resolve ADB provider based on mock flags
 		var ac adb.ADBClient
 		if mockADB {
-			log.Printf("[CLI] Mock ADB Mode enabled: Using MockADBClient")
-			ac = adb.NewMockADBClient()
+			cliLogger.Info("Mock ADB Mode enabled: Using MockADBClient")
+			ac = adb.NewMockADBClient(adbLogger)
 		} else {
-			log.Printf("[CLI] Production ADB Mode enabled: Using SocketADBClient (TCP:%d)", cfg.ADB.ServerPort)
-			ac = adb.NewSocketADBClient(cfg.ADB.ServerHost, cfg.ADB.ServerPort)
+			cliLogger.Info("Production ADB Mode enabled: Using SocketADBClient", "host", cfg.ADB.ServerHost, "port", cfg.ADB.ServerPort)
+			ac = adb.NewSocketADBClient(cfg.ADB.ServerHost, cfg.ADB.ServerPort, adbLogger)
 		}
 
 		// 5. Setup termination context
@@ -68,15 +113,15 @@ and loopback WebSocket streaming server.`,
 		defer stop()
 
 		// 6. Build and start daemon engine
-		engine := daemon.NewEngine(cfg, mr, ac)
+		engine := daemon.NewEngine(cfg, mr, ac, daemonLogger, websocketLogger)
 		if err := engine.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
-				log.Printf("[CLI] Daemon terminated with error: %v", err)
+				cliLogger.Error("Daemon terminated with error", "error", err)
 				return err
 			}
 		}
 
-		log.Printf("[CLI] Daemon cleanly terminated. Goodbye.")
+		cliLogger.Info("Daemon cleanly terminated. Goodbye.")
 		return nil
 	},
 }
@@ -86,6 +131,9 @@ func init() {
 	StartCmd.Flags().BoolVar(&emulateMetrics, "emulate-metrics", false, "Enable simulated sine-wave telemetry metrics")
 	StartCmd.Flags().BoolVar(&mockADB, "mock-adb", false, "Enable simulated USB connection ticks")
 	StartCmd.Flags().IntVarP(&serverPort, "port", "p", 0, "Overriding WebSocket local port")
+	StartCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Force log level to debug")
+	StartCmd.Flags().StringVar(&logLevel, "log-level", "", "Structured logging level (debug, info, warn, error)")
+	StartCmd.Flags().StringVar(&logFormat, "log-format", "", "Structured log output format (text, json)")
 
 	RootCmd.AddCommand(StartCmd)
 }

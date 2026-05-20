@@ -2,7 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -23,6 +23,7 @@ func (c *ClientConn) WriteJSON(v interface{}) error {
 
 // ConnectionPool manages active clients and ensures safe write routing.
 type ConnectionPool struct {
+	logger         *slog.Logger
 	mu             sync.RWMutex
 	connections    map[*ClientConn]bool
 	onConfigChange func(intervalMs int)
@@ -30,8 +31,9 @@ type ConnectionPool struct {
 }
 
 // NewConnectionPool instantiates an active client pool.
-func NewConnectionPool(onConfigChange func(intervalMs int), onAction func(command string)) *ConnectionPool {
+func NewConnectionPool(logger *slog.Logger, onConfigChange func(intervalMs int), onAction func(command string)) *ConnectionPool {
 	return &ConnectionPool{
+		logger:         logger,
 		connections:    make(map[*ClientConn]bool),
 		onConfigChange: onConfigChange,
 		onAction:       onAction,
@@ -43,7 +45,7 @@ func (p *ConnectionPool) Add(conn *ClientConn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.connections[conn] = true
-	log.Printf("[WebSocket] Client connected. Active clients: %d", len(p.connections))
+	p.logger.Info("Client connected", "active_clients", len(p.connections))
 }
 
 // Remove deletes a client from the registry and closes it.
@@ -53,7 +55,7 @@ func (p *ConnectionPool) Remove(conn *ClientConn) {
 	if p.connections[conn] {
 		delete(p.connections, conn)
 		conn.ws.Close()
-		log.Printf("[WebSocket] Client disconnected. Active clients: %d", len(p.connections))
+		p.logger.Info("Client disconnected", "active_clients", len(p.connections))
 	}
 }
 
@@ -69,7 +71,7 @@ func (p *ConnectionPool) Broadcast(message interface{}) {
 
 	for _, conn := range conns {
 		if err := conn.WriteJSON(message); err != nil {
-			log.Printf("[WebSocket] Broadcast send failure (removing client): %v", err)
+			p.logger.Error("Broadcast send failure (removing client)", "error", err)
 			p.Remove(conn)
 		}
 	}
@@ -101,7 +103,7 @@ func (p *ConnectionPool) HandleClient(wsConn *websocket.Conn) {
 
 		var inbound InboundMessage
 		if err := json.Unmarshal(msgBytes, &inbound); err != nil {
-			log.Printf("[WebSocket] Parse error on inbound message: %v", err)
+			p.logger.Error("Parse error on inbound message", "error", err)
 			continue
 		}
 
@@ -109,7 +111,7 @@ func (p *ConnectionPool) HandleClient(wsConn *websocket.Conn) {
 		case "ping":
 			// Fast response keepalive
 			if err := client.WriteJSON(map[string]string{"type": "pong"}); err != nil {
-				log.Printf("[WebSocket] Failed to send pong: %v", err)
+				p.logger.Error("Failed to send pong", "error", err)
 			}
 		case "config":
 			if inbound.Settings != nil && p.onConfigChange != nil {

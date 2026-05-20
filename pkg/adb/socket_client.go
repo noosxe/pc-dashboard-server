@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -14,12 +14,13 @@ import (
 
 // SocketADBClient connects directly to the ADB server via TCP loopback.
 type SocketADBClient struct {
+	logger     *slog.Logger
 	serverHost string
 	serverPort int
 }
 
 // NewSocketADBClient instantiates a production ADBClient.
-func NewSocketADBClient(host string, port int) *SocketADBClient {
+func NewSocketADBClient(host string, port int, logger *slog.Logger) *SocketADBClient {
 	if host == "" {
 		host = "127.0.0.1"
 	}
@@ -27,6 +28,7 @@ func NewSocketADBClient(host string, port int) *SocketADBClient {
 		port = 5037
 	}
 	return &SocketADBClient{
+		logger:     logger,
 		serverHost: host,
 		serverPort: port,
 	}
@@ -77,14 +79,14 @@ func (c *SocketADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent,
 			_, err := io.ReadFull(conn, lenBuf)
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
-					log.Printf("[ADB] Error reading event length: %v", err)
+					c.logger.Error("Error reading event length", "error", err)
 				}
 				return
 			}
 
 			length, err := parseHexLength(lenBuf)
 			if err != nil {
-				log.Printf("[ADB] Invalid event length hex %s: %v", string(lenBuf), err)
+				c.logger.Error("Invalid event length hex", "hex", string(lenBuf), "error", err)
 				return
 			}
 
@@ -92,7 +94,7 @@ func (c *SocketADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent,
 			payloadBuf := make([]byte, length)
 			_, err = io.ReadFull(conn, payloadBuf)
 			if err != nil {
-				log.Printf("[ADB] Error reading event payload of length %d: %v", length, err)
+				c.logger.Error("Error reading event payload", "length", length, "error", err)
 				return
 			}
 

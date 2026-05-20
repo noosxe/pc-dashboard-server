@@ -24,6 +24,7 @@ func DefaultConfig() Config {
 		Daemon: DaemonConfig{
 			UpdateIntervalMS: 1000,
 			LogLevel:         "info",
+			LogFormat:        "text",
 		},
 		ADB: ADBConfig{
 			ServerHost:     "127.0.0.1",

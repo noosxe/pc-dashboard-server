@@ -1,11 +1,13 @@
 package metrics
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 )
 
 func TestMockMetricsReader_CPU(t *testing.T) {
-	reader := NewMockMetricsReader()
+	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	metrics, err := reader.ReadCPU()
 	if err != nil {
 		t.Fatalf("unexpected error reading CPU: %v", err)
@@ -21,7 +23,7 @@ func TestMockMetricsReader_CPU(t *testing.T) {
 }
 
 func TestMockMetricsReader_RAM(t *testing.T) {
-	reader := NewMockMetricsReader()
+	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	metrics, err := reader.ReadRAM()
 	if err != nil {
 		t.Fatalf("unexpected error reading RAM: %v", err)
@@ -41,7 +43,7 @@ func TestMockMetricsReader_RAM(t *testing.T) {
 }
 
 func TestMockMetricsReader_GPU(t *testing.T) {
-	reader := NewMockMetricsReader()
+	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	metrics, err := reader.ReadGPU()
 	if err != nil {
 		t.Fatalf("unexpected error reading GPU: %v", err)

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,14 +19,17 @@ import (
 
 // HostMetricsReader reads telemetry from physical Linux hosts.
 type HostMetricsReader struct {
+	logger       *slog.Logger
 	mu           sync.Mutex
 	lastCPUTimes cpu.TimesStat
 	hasCPUTimes  bool
 }
 
 // NewHostMetricsReader instantiates a production MetricsReader.
-func NewHostMetricsReader() *HostMetricsReader {
-	r := &HostMetricsReader{}
+func NewHostMetricsReader(logger *slog.Logger) *HostMetricsReader {
+	r := &HostMetricsReader{
+		logger: logger,
+	}
 	// Warm up CPU times
 	if times, err := cpu.Times(false); err == nil && len(times) > 0 {
 		r.lastCPUTimes = times[0]
@@ -79,7 +82,7 @@ func (r *HostMetricsReader) ReadGPU() (GPUMetrics, error) {
 		if err == nil {
 			return m, nil
 		}
-		log.Printf("[Metrics] Failed to read NVIDIA GPU via nvidia-smi fallback: %v", err)
+		r.logger.Warn("Failed to read NVIDIA GPU via nvidia-smi fallback", "error", err)
 	}
 
 	// Attempt to query AMD/Intel via sysfs

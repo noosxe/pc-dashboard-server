@@ -3,7 +3,7 @@ package websocket
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -14,6 +14,7 @@ import (
 
 // Server coordinates HTTP listeners and handles Gorilla upgrades.
 type Server struct {
+	logger *slog.Logger
 	server *http.Server
 	pool   *ConnectionPool
 	host   string
@@ -21,19 +22,20 @@ type Server struct {
 }
 
 // NewServer initializes a strictly localized loopback WebSocket server.
-func NewServer(host string, port int, pool *ConnectionPool) *Server {
+func NewServer(host string, port int, pool *ConnectionPool, logger *slog.Logger) *Server {
 	// Security: Enforce strict local binding boundary.
 	if host != "127.0.0.1" && host != "::1" && host != "localhost" {
-		log.Printf("[WebSocket] [Security Warning] Requested bind address '%s' overridden to loopback '127.0.0.1' for safety.", host)
+		logger.Warn("Requested bind address overridden to loopback for safety", "requested_host", host, "fallback_host", "127.0.0.1")
 		host = "127.0.0.1"
 	}
 	if port == 0 {
 		port = 12345
 	}
 	return &Server{
-		host: host,
-		port: port,
-		pool: pool,
+		logger: logger,
+		host:   host,
+		port:   port,
+		pool:   pool,
 	}
 }
 
@@ -53,7 +55,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("[WebSocket] Upgrade failure: %v", err)
+			s.logger.Error("Upgrade failure", "error", err)
 			return
 		}
 		go s.pool.HandleClient(conn)
@@ -71,7 +73,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Run listener asynchronously
 	errChan := make(chan error, 1)
 	go func() {
-		log.Printf("[WebSocket] Listening strictly on ws://%s/ws", addr)
+		s.logger.Info("Listening strictly", "url", "ws://"+addr+"/ws")
 		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
 		}
@@ -82,7 +84,7 @@ func (s *Server) Start(ctx context.Context) error {
 	case err := <-errChan:
 		return err
 	case <-ctx.Done():
-		log.Printf("[WebSocket] Shutting down WebSocket HTTP server...")
+		s.logger.Info("Shutting down WebSocket HTTP server")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		return s.server.Shutdown(shutdownCtx)
