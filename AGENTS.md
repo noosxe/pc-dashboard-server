@@ -62,7 +62,7 @@ git checkout -b docs/agent-git-workflow
 ### 3. Make and Commit Your Changes
 While working, keep your commits clean, focused, and well-described.
 * Ensure the code compiles and tests pass before committing.
-* Write clear, concise commit messages.
+* Write clear, concise commit messages. **Do NOT** add any "co-authored by AI/LLM Agent" statements to your commits, as this is already covered by the global notice in the repository's `README.md`.
 * ⚠️ **Preserve Your Work**: Never blindly discard changes. When in doubt, stop and ask the user. If you are sure the changes are going to be needed later, stash them using `git stash`.
 
 ```bash
@@ -92,6 +92,7 @@ gh pr create --title "docs: describe git workflow for AI agents" --body "Propose
 > **Keep branches short-lived**: Focus on single, granular tasks per branch to keep Pull Requests small, easy to review, and easy to merge.
 
 * 📥 **Never blindly discard changes**: When in doubt about whether a change is needed, stop and ask the user. If the changes are going to be needed later, stash them (`git stash`).
+* 📝 **No AI Attribution in Commits**: Do not add "co-authored by AI agent" or similar statements to your commit messages or code files, as the project's root `README.md` already contains a global notice regarding LLM co-authorship.
 * 🔄 **Rebase regularly**: If the `main` branch has moved forward while you were working on your branch, rebase your branch on top of `main` to resolve conflicts locally:
   ```bash
   git checkout main
