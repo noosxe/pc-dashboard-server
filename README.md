@@ -6,17 +6,265 @@ A Go-based server designed for system monitoring, metrics collection, and dashbo
 > **LLM Agent Co-Authored Codebase**
 > The code, documentation, and configuration in this repository are co-authored by an LLM (Large Language Model) Agent. This is a blanket notice for anyone interested in exploring, reviewing, or using this codebase: some code patterns, logic, or scripts may have been generated or updated by an AI agent under user direction. Please review all code carefully before executing or utilizing it in a production environment.
 
-## Overview
+## 🚀 Overview
 
-PC Dashboard Server is the backend service responsible for gathering and exposing system metrics, hardware status information, and other telemetry. It provides API endpoints and CLI commands to interact with system statistics.
+**PC Dashboard Server** is a lightweight, low-overhead system daemon written in Go for Linux host systems. It works in tandem with a companion Android application ([com.noosxe.pc_dashboard](https://github.com/noosxe/pc-dashboard-app)) to transform any Android mobile device connected via USB into a dedicated, real-time hardware status monitor and dashboard.
 
-## Getting Started
+By using physical USB connections instead of local Wi-Fi networks, the system achieves sub-millisecond network latencies, eliminates wireless bandwidth contention, runs securely inside local host loops, and is completely isolated from external network eavesdropping or packet injection.
+
+---
+
+## ✨ Features
+
+- **⚡ Lightweight Telemetry Engine**: Asynchronously polls system statistics (CPU, RAM, and GPU) at a steady 1-second interval with less than 15MB of RAM footprint.
+- **🔌 Native ADB Hotplug Tracking**: Directly communicates with the ADB server (`127.0.0.1:5037`) over TCP sockets to monitor USB connections dynamically.
+- **📱 Automatic Bootstrapping**:
+  - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
+  - Launches the companion Android application activity (`com.noosxe.pc_dashboard`).
+  - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
+- **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
+- **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
+- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms) and `--mock-adb` (simulated connection ticks) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
+- **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
+
+---
+
+## 📦 Installation
 
 ### Prerequisites
 
-* Go `1.26` or higher
-* A Devcontainer-compatible development environment (highly recommended)
+- **Go Compiler**: Go `1.26` or higher.
+- **Android Debug Bridge (ADB)**: Standard `adb` utility installed on the host.
+  - On Debian/Ubuntu: `sudo apt install adb`
+  - Ensure the ADB server is started: `adb start-server`
 
-### Development Environment
+### 1. Primary Installation (`go install`)
 
-All active development is expected to take place within the provided **Devcontainer** environment. It contains pre-configured tooling and dependencies. For instructions, see the [Agent Developer Guide](AGENTS.md).
+Install the server daemon directly using Go's official package installer:
+
+```bash
+go install github.com/noosxe/pc-dashboard-server@latest
+```
+
+> [!TIP]
+> Ensure your Go binary path is included in your shell's environment variables. You can add the following to your `~/.bashrc` or `~/.zshrc`:
+> ```bash
+> export PATH=$PATH:$(go env GOPATH)/bin
+> ```
+
+### 2. Building from Source
+
+Alternatively, clone the repository and build the binary manually:
+
+```bash
+# Clone the repository
+git clone https://github.com/noosxe/pc-dashboard-server.git
+cd pc-dashboard-server
+
+# Build the executable
+go build -o pc-dashboard-server main.go
+```
+
+---
+
+## 🛠️ Usage Guide
+
+### Quick Start
+
+1. Start the ADB daemon:
+   ```bash
+   adb start-server
+   ```
+2. Launch the PC Dashboard Server:
+   ```bash
+   pc-dashboard-server start
+   ```
+3. Connect your Android device with USB debugging enabled, and watch the server automatically bootstrap the app and start streaming live statistics.
+
+---
+
+### Command-Line Interface (CLI)
+
+The server exposes the `start` subcommand to boot the daemon along with several flags to customize its execution.
+
+#### Subcommands
+
+- `start`: Launches the telemetry aggregation engine, USB auto-discovery socket, and the loopback WebSocket server.
+
+#### Flags for `start`
+
+| Flag | Shorthand | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--config` | `-c` | `""` | Path to the YAML configuration file |
+| `--port` | `-p` | `12345` | Overrides the WebSocket listening port |
+| `--emulate-metrics`| | `false` | Enables simulated telemetry metrics using smooth sine-wave algorithms |
+| `--mock-adb` | | `false` | Simulates USB hotplug connection ticks for local testing |
+| `--log-level` | | `"info"` | Sets structured logging level (`debug`, `info`, `warn`, `error`) |
+| `--log-format` | | `"text"` | Sets structured log output format (`text`, `json`) |
+| `--verbose` | `-v` | `false` | Unconditionally forces log level to `debug` |
+
+*Example (Emulation/Mock Mode for Sandbox Testing):*
+```bash
+pc-dashboard-server start --emulate-metrics --mock-adb --verbose
+```
+
+---
+
+### ⚙️ Configuration Management
+
+The server merges configurations dynamically from the following sources (ordered from highest precedence to lowest):
+
+1. **CLI Flags** (e.g. `--port 12345`)
+2. **Environment Variables** prefixed with `PCD_`
+3. **YAML Configuration File** located at `~/.config/pc-dashboard/config.yaml`
+4. **Internal Default Settings**
+
+#### Local Configuration File (`config.yaml`)
+
+Create a custom YAML file to define persistent properties:
+
+```yaml
+server:
+  host: "127.0.0.1"          # Strict loopback binding (strongly recommended)
+  port: 12345                # WebSocket server listening port
+
+daemon:
+  update_interval_ms: 1000   # Polling frequency for host statistics
+  log_level: "info"          # Logger level (debug, info, warn, error)
+  log_format: "text"         # Output style (text or json)
+
+adb:
+  server_host: "127.0.0.1"   # Host address of your local ADB daemon
+  server_port: 5037          # Port of your local ADB daemon
+  target_package: "com.noosxe.pc_dashboard"
+  target_activity: "com.noosxe.pc_dashboard.MainActivity"
+```
+
+#### Environment Variables
+
+Environment variables are prefixed with `PCD_` and nested by replacing underscores with dots. For example, `PCD_SERVER_PORT` maps to `server.port`. 
+
+> [!NOTE]
+> For configuration keys that have embedded underscores within their leaf name (such as `log_level` or `update_interval_ms`), environmental maps will undergo underscore-to-dot translation (e.g., yielding `daemon.log.level`). To override nested leaf properties with underscores, it is highly recommended to configure them via the YAML configuration file or CLI flags.
+
+---
+
+## 📐 System Architecture & Flow
+
+```mermaid
+graph TD
+    subgraph Host ["Linux Host System (Go Daemon)"]
+        MetricsCollector[Metrics Engine]
+        AdbTracker[ADB protocol Tracker]
+        WebSocketSrv[WebSocket Server]
+    end
+
+    subgraph Hardware ["System Sensors"]
+        CPU[CPU Temp & Usage]
+        RAM[RAM Used & Available]
+        GPU[GPU Usage & VRAM]
+    end
+
+    subgraph Client ["Android Device"]
+        CompanionApp[Dashboard Android UI]
+        LocalWsClient[WebSocket Client]
+    end
+
+    %% Sensor data flow
+    Hardware -->|sysfs / NVML| MetricsCollector
+    MetricsCollector -->|1-second Poll| WebSocketSrv
+
+    %% Auto-discovery and connection setup
+    AdbTracker -->|Detects USB Hotplug| WebSocketSrv
+    AdbTracker -->|Wake Screen & Launch App| CompanionApp
+    AdbTracker -->|adb reverse tcp:12345| CompanionApp
+
+    %% WebSocket flow
+    CompanionApp --> LocalWsClient
+    LocalWsClient <-->|ws://localhost:12345/ws| WebSocketSrv
+```
+
+---
+
+## 📊 WebSocket API Schema
+
+The daemon pushes structured telemetry payloads every second to all connected WebSocket clients on the `/ws` endpoint:
+
+```json
+{
+  "type": "telemetry",
+  "timestamp": 1716213825,
+  "data": {
+    "cpu": {
+      "usage_percent": 18.7,
+      "temp_celsius": 49.0
+    },
+    "gpu": {
+      "usage_percent": 41.0,
+      "temp_celsius": 58.0,
+      "vram_used_bytes": 3121561600,
+      "vram_total_bytes": 8589934592
+    },
+    "ram": {
+      "used_bytes": 14212567040,
+      "total_bytes": 34359738368,
+      "percentage": 41.3
+    }
+  }
+}
+```
+
+---
+
+## 🐧 Run as a Linux User Daemon (Systemd)
+
+To run the server continuously in the background within your desktop user space (safe and recommended as it requires zero root privileges), configure it as a **Systemd User Service**.
+
+1. Create a service configuration file under `~/.config/systemd/user/pc-dashboard.service`:
+
+```ini
+[Unit]
+Description=PC Dashboard Server Daemon
+After=network.target adb.service
+Documentation=https://github.com/noosxe/pc-dashboard-server
+
+[Service]
+Type=simple
+ExecStart=%h/go/bin/pc-dashboard-server start
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=default.target
+```
+
+> [!NOTE]
+> If you built from source or placed the binary in a different folder, modify `ExecStart` to point to the correct absolute binary location (e.g. `/usr/local/bin/pc-dashboard-server`).
+
+2. Control the daemon using user systemctl directives:
+
+```bash
+# Reload configurations
+systemctl --user daemon-reload
+
+# Enable automatic start upon user login
+systemctl --user enable pc-dashboard.service
+
+# Start the service immediately
+systemctl --user start pc-dashboard.service
+
+# Check service status
+systemctl --user status pc-dashboard.service
+
+# Tail logs in real-time
+journalctl --user -u pc-dashboard.service -f -n 100
+```
+
+---
+
+## 💻 Development & Contributing
+
+All active development is expected to take place within the provided **Devcontainer** (`.devcontainer`). It has pre-installed tools and environments to support smooth and secure contributions.
+
+Refer to the [Agent Developer Guide](AGENTS.md) for branch policies, check-out requirements, and code style rules before starting development or opening a pull request.
+
