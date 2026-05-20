@@ -92,7 +92,7 @@ When the target Android device transitions to the `online` state, the daemon ini
 1.  **Screen Wakeup**: Transmit raw ADB socket packet `shell:input keyevent KEYCODE_WAKEUP` to wake the screen.
 2.  **App Launch**: Launch the companion application (expected to be preinstalled on the device) by sending:
     ```
-    shell:am start -n com.noosxe.pcdashboard/com.noosxe.pcdashboard.MainActivity
+    shell:am start -n com.noosxe.pc_dashboard/com.noosxe.pc_dashboard.MainActivity
     ```
 3.  **Port Redirection**: Send a reverse connection request:
     ```
@@ -182,8 +182,8 @@ daemon:
 adb:
   server_host: "127.0.0.1"
   server_port: 5037
-  target_package: "com.noosxe.pcdashboard"
-  target_activity: "com.noosxe.pcdashboard.MainActivity"
+  target_package: "com.noosxe.pc_dashboard"
+  target_activity: "com.noosxe.pc_dashboard.MainActivity"
 ```
 
 ---
