@@ -212,3 +212,43 @@ pc-dashboard-server/
 *   **Secure Dependency Verification**: Every library will be checked to confirm it contains zero known CVEs (Common Vulnerabilities and Exposures) prior to final inclusion.
 *   **Local TCP Boundary**:
     WebSocket routes are restricted to the local loopback (`127.0.0.1`). Physical access via a USB connection (secured via ADB client authentication keys on the host machine) is the single path of access to the WebSocket port, keeping the surface area completely isolated.
+
+---
+
+## 6. Structured Logging Architecture
+
+The daemon utilizes Go's standard `log/slog` library for structured and level-controlled logging. This design achieves robust observability and easy integration with systemd journaling and machine-based log aggregators.
+
+### 6.1. Logger Bootstrapping and Output Handlers
+At startup, the root structured logger is initialized based on the configuration context:
+- **Output Target**: Writes strictly to `os.Stderr`, which is captured automatically by `systemd-journald` when executed as a service.
+- **Dynamic Format Selection**:
+  - **Text Output** (Default/Human-readable): Uses `slog.NewTextHandler` for colorized or readable terminal debugging.
+  - **JSON Output**: Uses `slog.NewJSONHandler` for structured log forwarding.
+- **Log Level**: Controlled dynamically via `--log-level` (defaulting to `info`) or the `--verbose` / `-v` flag, which forces `debug` log levels.
+
+### 6.2. Subsystem Log Isolation (Per-Module Loggers)
+To simplify troubleshooting, every core module is injected with an isolated `*slog.Logger` instance derived from the global root logger, pre-seeded with a `"module"` attribute.
+
+For example:
+- **Config**: `logger.With("module", "config")`
+- **Metrics**: `logger.With("module", "metrics")`
+- **ADB**: `logger.With("module", "adb")`
+- **WebSocket**: `logger.With("module", "websocket")`
+- **Daemon**: `logger.With("module", "daemon")`
+
+### 6.3. Output Examples
+
+#### Text Format Example
+```text
+time=2026-05-20T14:52:00Z level=INFO msg="starting websocket server" module=websocket addr=127.0.0.1:12345
+time=2026-05-20T14:52:01Z level=DEBUG msg="received ping" module=websocket client=127.0.0.1:54321
+time=2026-05-20T14:52:02Z level=WARN msg="ADB device state offline" module=adb serial=usb-dev-123
+```
+
+#### JSON Format Example
+```json
+{"time":"2026-05-20T14:52:00Z","level":"INFO","msg":"starting websocket server","module":"websocket","addr":"127.0.0.1:12345"}
+{"time":"2026-05-20T14:52:01Z","level":"DEBUG","msg":"received ping","module":"websocket","client":"127.0.0.1:54321"}
+{"time":"2026-05-20T14:52:02Z","level":"WARN","msg":"ADB device state offline","module":"adb","serial":"usb-dev-123"}
+```

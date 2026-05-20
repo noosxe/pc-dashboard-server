@@ -2,18 +2,20 @@ package adb
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 )
 
 // MockADBClient simulates hotplug USB and companion bootstrapping actions.
 type MockADBClient struct {
+	logger *slog.Logger
 	serial string
 }
 
 // NewMockADBClient instantiates a mock client with a default serial.
-func NewMockADBClient() *MockADBClient {
+func NewMockADBClient(logger *slog.Logger) *MockADBClient {
 	return &MockADBClient{
+		logger: logger,
 		serial: "MOCK_DEVICE_12345",
 	}
 }
@@ -33,14 +35,14 @@ func (c *MockADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent, e
 		}
 
 		// 2. Dispatch simulated online event
-		log.Printf("[MockADB] Device %s online", c.serial)
+		c.logger.Info("Device online", "serial", c.serial)
 		out <- DeviceEvent{Serial: c.serial, State: StateOnline}
 
 		// 3. Keep running until context is cancelled
 		<-ctx.Done()
 
 		// 4. Log teardown
-		log.Printf("[MockADB] Device %s offline. Cleared reverse port tunnels.", c.serial)
+		c.logger.Info("Device offline. Cleared reverse port tunnels.", "serial", c.serial)
 	}()
 
 	return out, nil
@@ -48,18 +50,18 @@ func (c *MockADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent, e
 
 // ReversePort mocks reverse port configuration.
 func (c *MockADBClient) ReversePort(ctx context.Context, serial string, localPort, devicePort int) error {
-	log.Printf("[MockADB] Reversing device port %d to host %d for serial %s", devicePort, localPort, serial)
+	c.logger.Info("Reversing device port to host", "device_port", devicePort, "local_port", localPort, "serial", serial)
 	return nil
 }
 
 // LaunchApp mocks starting target Android companion app activity.
 func (c *MockADBClient) LaunchApp(ctx context.Context, serial string, pkg, activity string) error {
-	log.Printf("[MockADB] Launching activity %s/%s for serial %s", pkg, activity, serial)
+	c.logger.Info("Launching activity", "package", pkg, "activity", activity, "serial", serial)
 	return nil
 }
 
 // WakeDevice mocks screen wakeup KEYCODE_WAKEUP event.
 func (c *MockADBClient) WakeDevice(ctx context.Context, serial string) error {
-	log.Printf("[MockADB] Waking screen for serial %s", serial)
+	c.logger.Info("Waking screen", "serial", serial)
 	return nil
 }

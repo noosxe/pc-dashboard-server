@@ -165,7 +165,10 @@ The daemon uses **`koanf`** to load and merge configurations from multiple sourc
 #### A. Configuration Hierarchy (Precedence)
 Settings are resolved in the following order of precedence (highest to lowest):
 1.  **Command-Line Flags**: Parsed via `cobra` / `pflag` and bound to `koanf`.
-2.  **Environment Variables**: Prefixed with `PCD_` (e.g., `PCD_SERVER_PORT`).
+    *   `--verbose`, `-v`: Unconditionally force log level to `debug`.
+    *   `--log-level`: Set structured logging level (`debug`, `info`, `warn`, `error`). Default is `info`.
+    *   `--log-format`: Set structured log output format (`text`, `json`). Default is `text`.
+2.  **Environment Variables**: Prefixed with `PCD_` (e.g., `PCD_SERVER_PORT`, `PCD_DAEMON_LOG_LEVEL`, `PCD_DAEMON_LOG_FORMAT`).
 3.  **Local Configuration File**: An optional YAML file located at `~/.config/pc-dashboard/config.yaml`.
 4.  **Internal Defaults**: Safe fallback values compiled directly into the binary.
 
@@ -178,6 +181,7 @@ server:
 daemon:
   update_interval_ms: 1000
   log_level: "info"
+  log_format: "text"
 
 adb:
   server_host: "127.0.0.1"
@@ -238,3 +242,4 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 3.  **Command Execution Safety**: If external commands (like `nvidia-smi` or `systemctl`) must be invoked, the binary paths and query arguments must be strictly hardcoded or validated against a strict allow-list. No unvalidated user strings may ever be passed to system shells.
 4.  **Graceful Failures**: If system sensors are missing or fail to read, the monitoring threads must continue reporting remaining system stats gracefully rather than terminating the daemon.
 5.  **No Credentials in Logs**: Logs outputted to systemd journal **MUST NOT** include any session tokens, client identities, or sensitive internal environmental keys.
+6.  **Structured Log Sanitization**: All log outputs must use the standard `log/slog` structured library. Log messages and attributes must never print un-sanitized user inputs or raw connection buffer contents to prevent log injection vulnerabilities.

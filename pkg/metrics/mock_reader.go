@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"log/slog"
 	"math"
 	"math/rand"
 	"time"
@@ -8,13 +9,15 @@ import (
 
 // MockMetricsReader generates smooth simulated telemetry waves.
 type MockMetricsReader struct {
+	logger    *slog.Logger
 	startTime time.Time
 	randSrc   *rand.Rand
 }
 
 // NewMockMetricsReader instantiates a simulation MetricsReader.
-func NewMockMetricsReader() *MockMetricsReader {
+func NewMockMetricsReader(logger *slog.Logger) *MockMetricsReader {
 	return &MockMetricsReader{
+		logger:    logger,
 		startTime: time.Now(),
 		randSrc:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
