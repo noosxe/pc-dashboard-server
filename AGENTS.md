@@ -63,17 +63,22 @@ git checkout -b docs/agent-git-workflow
 While working, keep your commits clean, focused, and well-described.
 * Ensure the code compiles and tests pass before committing.
 * Write clear, concise commit messages.
+* ⚠️ **Preserve Your Work**: Never blindly discard changes. When in doubt, stop and ask the user. If you are sure the changes are going to be needed later, stash them using `git stash`.
 
 ```bash
 git add .
-git commit -m "docs: describe git workflow for AI agents in agents.md"
+git commit -m "docs: describe git workflow for AI agents in AGENTS.md"
 ```
 
 ### 4. Push and Create a Pull Request
-Push your branch to the remote repository. Since `main` is protected, this branch will be published on the origin, where a Pull Request (PR) can be opened and reviewed.
+When the work is done, always commit and push the branch to the remote repository. Since `main` is protected, this branch will be published on the origin. After a successful push, use the GitHub MCP or the `gh` CLI tool to open a Pull Request (PR) that will be reviewed by the user.
 
 ```bash
+# Push the branch to remote
 git push -u origin <branch-name>
+
+# Open a PR using gh CLI (or use GitHub MCP)
+gh pr create --title "docs: describe git workflow for AI agents" --body "Proposed changes to agent documentation."
 ```
 
 ---
@@ -86,6 +91,7 @@ git push -u origin <branch-name>
 > [!TIP]
 > **Keep branches short-lived**: Focus on single, granular tasks per branch to keep Pull Requests small, easy to review, and easy to merge.
 
+* 📥 **Never blindly discard changes**: When in doubt about whether a change is needed, stop and ask the user. If the changes are going to be needed later, stash them (`git stash`).
 * 🔄 **Rebase regularly**: If the `main` branch has moved forward while you were working on your branch, rebase your branch on top of `main` to resolve conflicts locally:
   ```bash
   git checkout main
