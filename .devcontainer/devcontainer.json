@@ -1,0 +1,81 @@
+{
+	"name": "aptracker",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".."
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/node:2": {
+			"version": "lts",
+			"pnpmVersion": "latest"
+		},
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"configureZshAsDefaultShell": true
+		},
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+			"version": "latest",
+			"moby": false
+		},
+		"ghcr.io/devcontainers/features/github-cli:1": {}
+	},
+	"runArgs": [
+		"--privileged",
+		"--dns=100.100.100.100"
+	],
+	"mounts": [
+		"source=pnpm-store-cache,target=/home/vscode/.local/share/pnpm/store,type=volume"
+	],
+	"containerEnv": {
+		"PNPM_CONFIG_STORE_DIR": "/home/vscode/.local/share/pnpm",
+		"GH_TOKEN": "${localEnv:GITHUB_TOKEN}"
+	},
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"editor.formatOnSave": true,
+				"editor.defaultFormatter": "biomejs.biome",
+				"editor.codeActionsOnSave": {
+					"source.fixAll.biome": "explicit",
+					"source.organizeImports.biome": "explicit"
+				},
+				"go.toolsManagement.autoUpdate": true,
+				"go.formatTool": "gofmt",
+				"tailwindCSS.experimental.classRegex": [
+					[
+						"tv\\((([^()]*|\\([^()]*\\))*)\\)",
+						"[\"'`]([^\"'`]*?)[\"'`]"
+					]
+				],
+				"[go]": {
+					"editor.defaultFormatter": "golang.go",
+					"editor.formatOnSave": true,
+					"editor.codeActionsOnSave": {
+						"source.organizeImports": "explicit"
+					}
+				},
+				"[typescript]": {
+					"editor.defaultFormatter": "biomejs.biome"
+				},
+				"[typescriptreact]": {
+					"editor.defaultFormatter": "biomejs.biome"
+				}
+			},
+			"extensions": [
+				"golang.go",
+				"biomejs.biome",
+				"bradlc.vscode-tailwindcss",
+				"bufbuild.vscode-buf",
+				"tamasfe.even-better-toml",
+				"ms-azuretools.vscode-docker",
+				"tanstack.vscode-react-router-devtools",
+				"EditorConfig.EditorConfig"
+			]
+		}
+	},
+	"remoteUser": "vscode",
+	"postCreateCommand": "pnpm install",
+	"forwardPorts": [
+		8080,
+		5173
+	]
+}
