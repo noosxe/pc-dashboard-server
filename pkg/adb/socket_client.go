@@ -206,7 +206,8 @@ func (c *SocketADBClient) LaunchApp(ctx context.Context, serial string, pkg, act
 		return fmt.Errorf("launch app command rejected: %w", err)
 	}
 
-	// Read response (since am start triggers output)
+	// Read response until EOF to ensure the command executes to completion.
+	_, _ = io.Copy(io.Discard, conn)
 	return nil
 }
 
@@ -227,6 +228,8 @@ func (c *SocketADBClient) WakeDevice(ctx context.Context, serial string) error {
 		return fmt.Errorf("wakeup command rejected: %w", err)
 	}
 
+	// Read response until EOF to ensure the command executes to completion.
+	_, _ = io.Copy(io.Discard, conn)
 	return nil
 }
 
