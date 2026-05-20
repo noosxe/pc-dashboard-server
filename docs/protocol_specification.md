@@ -58,7 +58,7 @@ Once an authorized device serial enters the `device` state, the daemon sends a w
 The daemon requests a shell launch of the pre-installed package activity:
 1.  **Daemon sends**: `0012host:transport:[serial]`
 2.  **ADB Server responds**: `OKAY`
-3.  **Daemon sends**: `0059shell:am start -n com.noosxe.pcdashboard/com.noosxe.pcdashboard.MainActivity`
+3.  **Daemon sends**: `004eshell:am start -n com.noosxe.pc_dashboard/com.noosxe.pc_dashboard.MainActivity`
 4.  **ADB Server responds**: `OKAY` followed by execution confirmation streams.
 
 #### Step 4: Configuring USB Reverse Tunneling
