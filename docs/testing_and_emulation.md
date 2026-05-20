@@ -164,3 +164,42 @@ func TestTelemetryBroadcaster(t *testing.T) {
     }
 }
 ```
+
+---
+
+## 6. Devcontainer Testing & Network Boundaries
+
+Developing and verifying the PC Dashboard Server inside a virtualized environment (such as VS Code Devcontainers) introduces distinct networking and hardware boundary challenges for both human developers and LLM agents. 
+
+To achieve full testability without compromising physical environments, the following patterns are established:
+
+### 6.1. Exposing the WebSocket Server (Port Forwarding)
+The daemon binds strictly to local loopback `127.0.0.1:12345` inside the devcontainer. To enable diagnostic browser rigs or external clients on the host system to interact with the containerized WebSocket server, port `12345` must be forwarded:
+*   Add port `12345` to the `forwardPorts` list in `.devcontainer/devcontainer.json` (completed).
+*   This automatically maps `127.0.0.1:12345` on the host machine to the running server in the container, enabling local tools (like browser diagnostic screens and `websocat` on the host machine) to connect transparently.
+
+### 6.2. Connecting to the Host's Physical ADB Server
+By default, the daemon attempts to connect to `127.0.0.1:5037` to track physical USB devices. Inside a devcontainer, `127.0.0.1` refers to the container itself, which lacks access to the host's USB controller and real ADB daemon.
+To connect to the host's actual ADB server (connected to physical companion devices or Android emulator instances):
+1.  **Configure Host Network Resolving**:
+    Set the daemon configuration value `adb.server_host` to **`host.docker.internal`** instead of `127.0.0.1`:
+    ```yaml
+    adb:
+      server_host: "host.docker.internal"
+      server_port: 5037
+    ```
+2.  **Enable Host Port Exposure**:
+    Ensure the ADB daemon running on the host system is configured to accept TCP loopback connections.
+3.  This dynamically routes the socket tracking directly to the host's hardware state, allowing real-world testing of physical USB hotplug events entirely from inside the devcontainer.
+
+### 6.3. Direct ADB TCP Socket Mocking (In-Memory Integration Tests)
+To allow LLM agents to execute automated integration tests (such as `go test ./...`) inside headless CI environments or local sandboxes where no ADB server is running at all, tests must mock the TCP protocol layer:
+*   **In-Memory Listeners**: Tests can instantiate a native Go TCP listener on a dynamic, local port (e.g. `:0`) and point `TCPADBClient` to it.
+*   **Simulating ADB Responses**: The test-side TCP listener parses incoming command streams and returns correct raw ADB hex frames (such as `OKAY` or tab-separated connection strings):
+    ```go
+    // In-memory mock response to host:track-devices
+    conn.Write([]byte("OKAY"))
+    conn.Write([]byte("00150123456789ABC\tdevice\n"))
+    ```
+*   This pattern isolates the network socket logic from external environment states, giving both developers and AI agents instant, deterministic unit test validation of length-prefixed ADB frame parsing.
+
