@@ -201,7 +201,22 @@ func (e *Engine) handleConfigChange(intervalMs int) {
 	e.interval = duration
 	e.intervalMu.Unlock()
 
-	e.resetChan <- duration
+	// Non-blocking write to resetChan. If a reset is already pending,
+	// we drain the channel first so that the ticker always gets the most recent interval.
+	select {
+	case e.resetChan <- duration:
+	default:
+		// Drain old value to make space
+		select {
+		case <-e.resetChan:
+		default:
+		}
+		// Send the new value
+		select {
+		case e.resetChan <- duration:
+		default:
+		}
+	}
 }
 
 // handleAction executes commands requested by companion dashboards.

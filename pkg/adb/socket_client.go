@@ -10,6 +10,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // SocketADBClient connects directly to the ADB server via TCP loopback.
@@ -40,10 +41,24 @@ func (c *SocketADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent,
 
 	// Establish connection
 	addr := net.JoinHostPort(c.serverHost, strconv.Itoa(c.serverPort))
-	conn, err := net.Dial("tcp", addr)
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		close(out)
 		return nil, fmt.Errorf("failed to connect to ADB server at %s: %w", addr, err)
+	}
+
+	// Close connection when context is cancelled to unblock read loop
+	go func() {
+		<-ctx.Done()
+		conn.Close()
+	}()
+
+	// Set initial write deadline for handshakes
+	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		conn.Close()
+		close(out)
+		return nil, fmt.Errorf("failed to set handshake deadline: %w", err)
 	}
 
 	// Send track-devices command
@@ -57,6 +72,14 @@ func (c *SocketADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent,
 		conn.Close()
 		close(out)
 		return nil, fmt.Errorf("track-devices rejected by ADB server: %w", err)
+	}
+
+	// Clear deadlines for continuous streaming since it will wait indefinitely for hotplugs,
+	// but remains fully cancelable due to the background closer goroutine.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
+		close(out)
+		return nil, fmt.Errorf("failed to clear tracking deadlines: %w", err)
 	}
 
 	// Run device tracking loop in a goroutine
@@ -78,9 +101,11 @@ func (c *SocketADBClient) TrackDevices(ctx context.Context) (<-chan DeviceEvent,
 			lenBuf := make([]byte, 4)
 			_, err := io.ReadFull(conn, lenBuf)
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					c.logger.Error("Error reading event length", "error", err)
+				// Suppress logging if error is due to context cancellation or normal connection shutdown
+				if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || ctx.Err() != nil {
+					return
 				}
+				c.logger.Error("Error reading event length", "error", err)
 				return
 			}
 
@@ -212,6 +237,18 @@ func (c *SocketADBClient) connectToDevice(ctx context.Context, serial string) (n
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial ADB server at %s: %w", addr, err)
+	}
+
+	// Apply context deadline or a default 10-second timeout to protect against hangs
+	var deadlineErr error
+	if deadline, ok := ctx.Deadline(); ok {
+		deadlineErr = conn.SetDeadline(deadline)
+	} else {
+		deadlineErr = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	}
+	if deadlineErr != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to set connection deadline: %w", deadlineErr)
 	}
 
 	transportCmd := fmt.Sprintf("host:transport:%s", serial)

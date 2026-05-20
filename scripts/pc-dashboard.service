@@ -1,0 +1,12 @@
+[Unit]
+Description=PC Dashboard Server Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/pc-dashboard-server start
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
