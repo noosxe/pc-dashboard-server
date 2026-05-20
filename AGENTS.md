@@ -101,3 +101,36 @@ gh pr create --title "docs: describe git workflow for AI agents" --body "Propose
   git rebase main
   ```
 * 🧪 **Verify changes**: Run tests and lint checks locally before pushing your changes to ensure code quality.
+
+---
+
+## 🗺️ Repository Map & Architectural Context
+
+To keep your session context small and avoid wasting tokens scanning the repository, refer to this architectural blueprint:
+
+### 1. Document Index
+*   **[specifications.md](file:///workspaces/pc-dashboard-server/docs/specifications.md)**: Core features, telemetry schemas, and systemd config guidelines.
+*   **[design_document.md](file:///workspaces/pc-dashboard-server/docs/design_document.md)**: Library matrices (Koanf, Gorilla, gopsutil), modular interfaces, and package interactions.
+*   **[protocol_specification.md](file:///workspaces/pc-dashboard-server/docs/protocol_specification.md)**: Byte-level length-prefixed ADB frame specification and bidirectional WebSocket JSON payloads.
+*   **[testing_and_emulation.md](file:///workspaces/pc-dashboard-server/docs/testing_and_emulation.md)**: Wave telemetry formulas, mock hotplug algorithms, host network bridges (`host.docker.internal`), and unit-test socket mocking.
+
+### 2. Standard Directory Layout
+When implementing the codebase, organize logic strictly within these single-responsibility packages:
+```
+pc-dashboard-server/
+├── cmd/                          # Cobra CLI command routers (e.g. root.go, start.go)
+└── pkg/
+    ├── config/                   # Strongly-typed Koanf configuration loader
+    ├── metrics/                  # Telemetry Reader interface & implementations (Host, Mock)
+    ├── adb/                      # ADB client interface, tracking event stream, & TCP driver
+    ├── websocket/                # Multi-client pool & loopback WebSocket server
+    └── daemon/                   # Daemon orchestrator binding ADB, Metrics, and WebSockets
+```
+
+### 3. Core Architectural Constraints
+*   **Interface-First Design**: Production code and mock systems are decoupled via interfaces. Hardware telemetry uses `MetricsReader`. Android USB interactions use `ADBClient`.
+*   **Emulation Engines**: Tests and virtualized containers run in Emulation Mode via `--emulate-metrics` (smooth wave algorithms) and `--mock-adb` (simulated physical device connection ticks).
+*   **Network Bound Safety**: Under no circumstance should the WebSocket server bind outside the local loopback boundary (`127.0.0.1`).
+*   **ADB Socket Protocol**: The production client communicates strictly over raw TCP connection streams on port `5037` (or `host.docker.internal:5037` in Devcontainers) using length-prefixed ADB protocol headers. **Do not invoke external `adb` CLI shell binaries.**
+*   **Android Package**: The client companion app package name is strictly: `com.noosxe.pc_dashboard`.
+
