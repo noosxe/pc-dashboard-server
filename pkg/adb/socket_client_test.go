@@ -2,10 +2,10 @@ package adb
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -40,8 +40,10 @@ func TestSocketADBClient_TrackDevices(t *testing.T) {
 	parts := strings.Split(addr, ":")
 	host := parts[0]
 	portStr := parts[1]
-	var port int
-	fmt.Sscanf(portStr, "%d", &port)
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("failed to parse listener port: %v", err)
+	}
 
 	go func() {
 		conn, err := listener.Accept()
@@ -108,8 +110,10 @@ func TestSocketADBClient_BootstrapActions(t *testing.T) {
 	parts := strings.Split(addr, ":")
 	host := parts[0]
 	portStr := parts[1]
-	var port int
-	fmt.Sscanf(portStr, "%d", &port)
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("failed to parse listener port: %v", err)
+	}
 
 	// Mock server that processes a full bootstrap handshake chain
 	go func() {
@@ -144,7 +148,8 @@ func TestSocketADBClient_BootstrapActions(t *testing.T) {
 	}()
 
 	client := NewSocketADBClient(host, port, slog.Default())
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// 1. Test WakeDevice
 	if err := client.WakeDevice(ctx, "TEST_123"); err != nil {
