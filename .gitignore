@@ -1,0 +1,24 @@
+# Binaries and executable files
+pc-dashboard-server
+
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDEs and local setups
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+
+# Local configuration overrides
+config.yaml
