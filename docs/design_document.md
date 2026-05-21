@@ -77,6 +77,7 @@ graph TD
     DaemonCore[Daemon Engine] -->|uses| MetricsReader[MetricsReader Interface]
     DaemonCore -->|uses| ADBClient[ADBClient Interface]
     DaemonCore -->|uses| MPRISManager[MPRISManager Interface]
+    DaemonCore -->|uses| NotificationManager[NotificationManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
@@ -86,6 +87,9 @@ graph TD
 
     MPRISManager -.->|Implementation| DbusMPRIS[DbusMPRISManager <br>Pure Go D-Bus session bus]
     MPRISManager -.->|Implementation| MockMPRIS[MockMPRISManager <br>Simulated player states]
+
+    NotificationManager -.->|Implementation| DbusNotifications[DbusNotificationManager <br>Pure Go D-Bus session bus]
+    NotificationManager -.->|Implementation| MockNotifications[MockNotificationManager <br>Simulated notification popups]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -239,7 +243,53 @@ type MPRISManager interface {
     1.  `DbusMPRISManager`: Production client communicating directly over D-Bus Session sockets using `godbus`.
     2.  `MockMPRISManager`: Simulation client that generates fluctuating player progress and rotates song metadata for local emulation.
 
-### 4.4. Application Package & Module Layout
+### 4.4. Notification Manager Interface (`NotificationManager`)
+The notification routing and triggering engine communicates exclusively through this interface:
+
+```go
+package notifications
+
+import "context"
+
+// NotificationEvent represents a notification caught on the D-Bus bus.
+type NotificationEvent struct {
+	AppName       string                 `json:"app_name"`
+	ReplacesID    uint32                 `json:"replaces_id"`
+	AppIcon       string                 `json:"app_icon"`
+	Summary       string                 `json:"summary"`
+	Body          string                 `json:"body"`
+	Actions       []string               `json:"actions"`
+	Hints         map[string]interface{} `json:"hints"`
+	ExpireTimeout int32                  `json:"expire_timeout"`
+}
+
+// NotificationRequest represents a request to trigger a notification via D-Bus.
+type NotificationRequest struct {
+	AppName       string                 `json:"app_name"`
+	ReplacesID    uint32                 `json:"replaces_id"`
+	AppIcon       string                 `json:"app_icon"`
+	Summary       string                 `json:"summary"`
+	Body          string                 `json:"body"`
+	Actions       []string               `json:"actions"`
+	Hints         map[string]interface{} `json:"hints"`
+	ExpireTimeout int32                  `json:"expire_timeout"`
+}
+
+// NotificationManager defines the contract for monitoring and triggering notifications.
+type NotificationManager interface {
+	// Start begins monitoring D-Bus for notifications and pushes caught notifications.
+	Start(ctx context.Context) (<-chan NotificationEvent, error)
+
+	// SendNotification triggers a notification on D-Bus.
+	SendNotification(ctx context.Context, req NotificationRequest) (uint32, error)
+}
+```
+
+*   **Implementations**:
+    1.  `DbusNotificationManager`: Production client communicating directly over D-Bus Session sockets using `godbus`'s `BecomeMonitor` for interception and standard method invocations for publishing.
+    2.  `MockNotificationManager`: Emulation client that triggers randomized simulated notification events and handles logging of published notifications.
+
+### 4.5. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -264,6 +314,10 @@ pc-dashboard-server/
 │   │   ├── mpris.go              # MPRISManager interface & state structures
 │   │   ├── dbus_manager.go       # Production MPRISManager (native D-Bus:session)
 │   │   └── mock_manager.go       # Simulated media player state generator
+│   ├── notifications/            # Desktop notification synchronization module
+│   │   ├── notifications.go      # NotificationManager interface & event models
+│   │   ├── dbus_manager.go       # Production NotificationManager (native D-Bus:session)
+│   │   └── mock_manager.go       # Simulated notification event generator
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -274,10 +328,11 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, and `MPRISManager`.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, and `NotificationManager`.
 2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
-4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager` event channel, pushing `media_state` updates to the WebSocket broadcaster on-change.
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager` and `NotificationManager` event channels, pushing `media_state` and `notification_event` updates to the WebSocket broadcaster as they arrive.
+5. **Command Ingestion Phase**: WebSocket clients send `notification_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager.SendNotification` to trigger native D-Bus toasts on the host desktop.
 
 ---
 

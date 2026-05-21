@@ -273,7 +273,13 @@ Integrate with the Linux host's D-Bus session bus to dynamically monitor active 
 - **Architectural Isolation**: Keep D-Bus dependencies strictly decoupled from the core daemon loop to guarantee cross-compilation and execution stability even on systems without D-Bus.
 - *Status*: Detailed architectural design, message protocol, and WebSocket JSON schemas have been fully specified and approved. Implementation is currently scheduled for the next phase.
 
-### 2. ⚡ Additional Planned Enhancements
+### 2. 🔔 Desktop Notifications Sync (D-Bus) 🟡 *[Design Phase]*
+Bi-directional desktop notification integration with the Linux host's D-Bus notification system.
+- **Outbound Stream**: Dynamically catch D-Bus method calls to `org.freedesktop.Notifications.Notify` (using D-Bus eavesdropping/monitoring) and forward incoming desktop toast messages (app name, summary, body, icon) to the companion app.
+- **Inbound Commands**: Support WebSocket commands from the companion app or daemon itself to trigger standard host desktop notification popups via D-Bus session bus.
+- **Architectural Isolation**: Use modular interfaces to completely isolate D-Bus notification subsystems, supporting mock drivers in emulation mode.
+
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
