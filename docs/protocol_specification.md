@@ -336,6 +336,97 @@ The companion app can transmit media commands to control any active player on th
 
 ---
 
+### 3.5. Outbound Notification Event Payload (Host → Android Client)
+This is an event-driven payload pushed asynchronously by the daemon whenever a desktop notification is intercepted/eavesdropped on the D-Bus session bus.
+
+#### JSON Schema Spec
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotificationEventPush",
+  "type": "object",
+  "required": ["type", "timestamp", "data"],
+  "properties": {
+    "type": { "type": "string", "const": "notification_event" },
+    "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
+    "data": {
+      "type": "object",
+      "required": ["app_name", "replaces_id", "app_icon", "summary", "body", "actions", "hints", "expire_timeout"],
+      "properties": {
+        "app_name": { "type": "string" },
+        "replaces_id": { "type": "integer", "minimum": 0 },
+        "app_icon": { "type": "string" },
+        "summary": { "type": "string" },
+        "body": { "type": "string" },
+        "actions": { "type": "array", "items": { "type": "string" } },
+        "hints": { "type": "object" },
+        "expire_timeout": { "type": "integer" }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "notification_event",
+  "timestamp": 1716213825,
+  "data": {
+    "app_name": "Slack",
+    "replaces_id": 0,
+    "app_icon": "slack",
+    "summary": "New message from Alice",
+    "body": "Hey, are you free for a call?",
+    "actions": ["default", "Activate"],
+    "hints": {
+      "urgency": 1
+    },
+    "expire_timeout": 5000
+  }
+}
+```
+
+---
+
+### 3.6. Inbound Notification Command Payload (Android Client → Host)
+The companion app (or external WebSocket source) can transmit this command to trigger standard desktop notifications on the host system via D-Bus.
+
+#### Request JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotificationCommand",
+  "type": "object",
+  "required": ["type", "summary", "body"],
+  "properties": {
+    "type": { "type": "string", "const": "notification_command" },
+    "app_name": { "type": "string", "default": "pc-dashboard" },
+    "replaces_id": { "type": "integer", "minimum": 0, "default": 0 },
+    "app_icon": { "type": "string", "default": "dialog-information" },
+    "summary": { "type": "string", "maxLength": 512 },
+    "body": { "type": "string", "maxLength": 2048 },
+    "actions": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "hints": { "type": "object", "default": {} },
+    "expire_timeout": { "type": "integer", "default": -1 }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "notification_command",
+  "app_name": "pc-dashboard",
+  "summary": "Companion Connected",
+  "body": "Android companion app successfully established link.",
+  "app_icon": "dialog-information",
+  "expire_timeout": 3000
+}
+```
+
+---
+
 ## 4. Connection State Machine & Recovery
 
 ```
