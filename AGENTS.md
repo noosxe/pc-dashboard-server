@@ -83,6 +83,60 @@ gh pr create --title "docs: describe git workflow for AI agents" --body "Propose
 
 ---
 
+## 🔄 Feature Development Workflow
+
+When implementing new features in this repository, you must strictly follow a three-phase workflow: **Design**, **Review**, and **Implementation**. Under no circumstances should source code implementation begin until the design phase has been completed and approved by the user.
+
+```mermaid
+graph TD
+    subgraph Phase 1: Design
+        A[Feature Requested] --> B[Research Solutions]
+        B --> C[Consider Security]
+        C --> D[Update Docs in repo]
+        D --> E[Add to README Roadmap]
+        E --> F[Commit/Push & Open PR]
+        style F fill:#f9f,stroke:#333,stroke-width:2px
+    end
+    subgraph Phase 2: Review
+        F --> G[User Reviews Docs]
+        G --> H{Approval/Changes?}
+        H -->|Changes| D
+        H -->|Implement| I[Go to Implementation]
+    end
+    subgraph Phase 3: Implementation
+        I --> J[Confirm Design Details]
+        J --> K[Implement & Test Code]
+        K --> L[Remove from Roadmap & Update README Features]
+        L --> M[Commit/Push & Open PR]
+        style M fill:#9f9,stroke:#333,stroke-width:2px
+    end
+```
+
+### 1. Design Phase
+When a new feature is requested, start by laying the technical and architectural foundation. **No implementation or source code modifications should take place at this stage.**
+1.  **Research & Feasibility**: Conduct thorough research to find best-effort, reasonable, and robust solutions. Outline the technical specifications.
+2.  **Security Review**: Carefully consider the security implications of the new feature (e.g., trust boundaries, sensitive data pathways, and loopback safety) and document them.
+3.  **Update Documentation**: Update the existing markdown documentation in the repository (e.g., under `docs/` or `README.md`) to comprehensively describe the planned architecture, protocol changes, and behavior.
+4.  **Add to Roadmap**: Add the proposed feature to the **Roadmap** section of `README.md` with a small, clear summary of its scope and status (e.g., `*[Design Phase]*`).
+5.  **Submit for Review**: Commit the documentation changes, push the branch, and open a Pull Request (PR).
+
+### 2. Review Phase
+During this phase, the user reviews the updated documentation to evaluate the proposed design.
+1.  **Wait for Feedback**: Do not proceed to write application code.
+2.  **Iterate on Design**: If the user requests changes, clarify questions or refine the documentation, committing updates to the same branch.
+3.  **Transition**: This phase concludes when the user explicitly approves the design and requests the feature implementation.
+
+### 3. Implementation Phase
+When the user asks for the feature implementation to proceed:
+1.  **Confirm Details**: Review and confirm the exact technical details and schemas established during the Design Phase.
+2.  **Develop & Test**: Implement the production code and corresponding automated tests, verifying everything passes within the devcontainer.
+3.  **Update README**:
+    *   Remove the feature from the **Roadmap** section of `README.md`.
+    *   Add the feature under the appropriate section in the **Features** list of `README.md`. If no existing section fits, create a new section.
+4.  **Submit PR**: Commit your code, tests, and the README updates, push to the remote, and open a PR for merging.
+
+---
+
 ## 💡 Best Practices for Agents
 
 > [!IMPORTANT]
