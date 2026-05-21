@@ -23,6 +23,7 @@ This document outlines the selected tools, libraries, and protocols to implement
 | **ADB USB Protocol Interface** | Direct TCP Protocol Wrapper / `github.com/zach-klippenstein/goadb` | Establishes a TCP streaming socket with local ADB server (`127.0.0.1:5037`) for tracking and reverse tunneling. | None (Pure Go) | **Highly Safe**: By interacting directly over standard TCP rather than executing external shell commands, it completely eliminates shell injection vectors. |
 | **WebSocket Networking** | `github.com/gorilla/websocket` or `nhooyr.io/websocket` | Standard Go framework for high-throughput, asynchronous WebSocket routing. | None (Pure Go) | **Highly Safe**: Complies fully with RFC 6455. Restricts listener strictly to the local loopback `127.0.0.1`. |
 | **Configuration Management** | `github.com/knadh/koanf/v2` | Lightweight, extensible configuration engine supporting YAML configs, environment variables, and CLI flags. | None (Pure Go) | **Safe**: Minimal, modern codebase. Parses strict schemas without arbitrary code execution vectors. |
+| **D-Bus & Media (MPRIS)** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus Session Bus to query and control MPRIS media players. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids binary/CLI dependencies and execution. |
 
 ---
 
@@ -58,6 +59,13 @@ This document outlines the selected tools, libraries, and protocols to implement
     2.  **Extensible Providers & Parsers**: Easily merges configurations from multiple layers (defaults -> YAML/JSON file -> Env Variables -> CLI flags) using a structured abstraction.
     3.  **Strict Typings**: Safe configuration mapping using `koanf.Unmarshal` into strongly typed Go configuration structs, preventing runtime type coercion errors.
 
+### 3.5. D-Bus and MPRIS Interface: `godbus` vs Command-Line Parsing
+*   **Decision**: Use `github.com/godbus/dbus/v5` to communicate directly with the desktop D-Bus Session Bus.
+*   **Rationale**:
+    1.  **CGO-Free & High Portability**: Unlike libdbus bindings, `godbus` is written in 100% pure Go. It connects directly to D-Bus unix domain sockets (`/run/user/...` or via the `DBUS_SESSION_BUS_ADDRESS` environment variable) using standard TCP/Unix socket primitives. This retains absolute static binary capability without needing dynamic library linkers.
+    2.  **Safety**: Interacting directly over standard D-Bus socket connections completely avoids spawning shell helper binaries like `playerctl`, `dbus-send`, or `gdbus`. This eliminates any possibilities of arguments escaping or shell injections.
+    3.  **Low-Overhead Event Loops**: `godbus` provides native signal binding. Instead of having to spin up new OS processes to poll player states periodically, the daemon registers event listeners to receive lightweight, asynchronously pushed D-Bus change frames. This maintains a sub-millisecond response latency with near-zero CPU and memory usage.
+
 ---
 
 ## 4. Modularity & Swappable Interface Design
@@ -68,12 +76,16 @@ To enable local mocking, unit testing, and simulation, all hardware telemetry ga
 graph TD
     DaemonCore[Daemon Engine] -->|uses| MetricsReader[MetricsReader Interface]
     DaemonCore -->|uses| ADBClient[ADBClient Interface]
+    DaemonCore -->|uses| MPRISManager[MPRISManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
     
     ADBClient -.->|Implementation| SocketADB[SocketADBClient <br>Real TCP port 5037]
     ADBClient -.->|Implementation| MockADB[MockADBClient <br>Simulated physical triggers]
+
+    MPRISManager -.->|Implementation| DbusMPRIS[DbusMPRISManager <br>Pure Go D-Bus session bus]
+    MPRISManager -.->|Implementation| MockMPRIS[MockMPRISManager <br>Simulated player states]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -172,7 +184,62 @@ type ADBClient interface {
     1.  `TCPADBClient`: Production client communicating directly over TCP socket streams with the background ADB daemon on port `5037`.
     2.  `MockADBClient`: Simulation client that triggers artificial `device online/offline` events, allowing full testing of the websocket handshake loops inside devcontainers.
 
-### 4.3. Application Package & Module Layout
+### 4.3. Media & MPRIS Controller Interface (`MPRISManager`)
+The media playback monitoring and remote control engine communicates exclusively through this interface:
+
+```go
+package mpris
+
+import "context"
+
+// PlaybackStatus represents the state of a player.
+type PlaybackStatus string
+
+const (
+    StatusPlaying PlaybackStatus = "Playing"
+    StatusPaused  PlaybackStatus = "Paused"
+    StatusStopped PlaybackStatus = "Stopped"
+)
+
+// PlayerMetadata represents the track currently playing.
+type PlayerMetadata struct {
+    TrackID     string   `json:"track_id"`
+    Title       string   `json:"title"`
+    Artist      []string `json:"artist"`
+    Album       string   `json:"album"`
+    ArtURL      string   `json:"art_url"`
+    LengthMicro int64    `json:"length_microseconds"` // length in microseconds
+}
+
+// PlayerState represents the complete state of a media player.
+type PlayerState struct {
+    PlayerName     string         `json:"player_name"` // e.g. "spotify", "vlc"
+    PlaybackStatus PlaybackStatus `json:"playback_status"`
+    Volume         float64        `json:"volume"`             // 0.0 to 1.0
+    PositionMicro  int64          `json:"position_microseconds"` // current playback position
+    Metadata       PlayerMetadata `json:"metadata"`
+}
+
+// MediaEvent represents a change in the active players or their playback states.
+type MediaEvent struct {
+    ActivePlayers []PlayerState `json:"active_players"`
+}
+
+// MPRISManager defines the contract for monitoring and controlling MPRIS players.
+type MPRISManager interface {
+    // Start begins monitoring DBus for MPRIS players and pushes state updates.
+    Start(ctx context.Context) (<-chan MediaEvent, error)
+    
+    // SendCommand issues a control command to a specific active player.
+    SendCommand(ctx context.Context, playerName string, command string, args map[string]interface{}) error
+}
+```
+
+*   **Implementations**:
+    1.  `DbusMPRISManager`: Production client communicating directly over D-Bus Session sockets using `godbus`.
+    2.  `MockMPRISManager`: Simulation client that generates fluctuating player progress and rotates song metadata for local emulation.
+
+### 4.4. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -193,6 +260,10 @@ pc-dashboard-server/
 │   │   ├── client.go             # ADBClient interface & connection structures
 │   │   ├── socket_client.go      # Production ADBClient (direct socket TCP:5037)
 │   │   └── mock_client.go        # Simulated ADB physical connection generator
+│   ├── mpris/                    # Media & MPRIS player monitoring module
+│   │   ├── mpris.go              # MPRISManager interface & state structures
+│   │   ├── dbus_manager.go       # Production MPRISManager (native D-Bus:session)
+│   │   └── mock_manager.go       # Simulated media player state generator
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -203,10 +274,10 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader` and `ADBClient`.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, and `MPRISManager`.
 2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
-4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second and pushes the resulting frames to the WebSocket broadcaster.
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager` event channel, pushing `media_state` updates to the WebSocket broadcaster on-change.
 
 ---
 
