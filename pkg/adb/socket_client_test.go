@@ -166,3 +166,56 @@ func TestSocketADBClient_BootstrapActions(t *testing.T) {
 		t.Errorf("ReversePort failed: %v", err)
 	}
 }
+
+// TestSocketADBClient_CloseApp verifies the close app adb command payload.
+func TestSocketADBClient_CloseApp(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test TCP listener: %v", err)
+	}
+	defer listener.Close()
+
+	addr := listener.Addr().String()
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	portStr := parts[1]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("failed to parse listener port: %v", err)
+	}
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read select-device command ("host:transport:TEST_CLOSE")
+		cmd, err := readTestFrame(conn)
+		if err != nil || cmd != "host:transport:TEST_CLOSE" {
+			return
+		}
+		if _, err := conn.Write([]byte("OKAY")); err != nil {
+			return
+		}
+
+		// Read close command ("shell:am force-stop com.noosxe.pc_dashboard")
+		closeCmd, err := readTestFrame(conn)
+		if err != nil || closeCmd != "shell:am force-stop com.noosxe.pc_dashboard" {
+			return
+		}
+		if _, err := conn.Write([]byte("OKAY")); err != nil {
+			return
+		}
+	}()
+
+	client := NewSocketADBClient(host, port, slog.Default())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := client.CloseApp(ctx, "TEST_CLOSE", "com.noosxe.pc_dashboard"); err != nil {
+		t.Errorf("CloseApp failed: %v", err)
+	}
+}
+

@@ -65,3 +65,9 @@ func (c *MockADBClient) WakeDevice(ctx context.Context, serial string) error {
 	c.logger.Info("Waking screen", "serial", serial)
 	return nil
 }
+
+// CloseApp mocks stopping the target companion app.
+func (c *MockADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
+	c.logger.Info("Closing activity (force-stop)", "package", pkg, "serial", serial)
+	return nil
+}

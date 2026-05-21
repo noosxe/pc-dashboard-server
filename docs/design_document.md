@@ -162,6 +162,9 @@ type ADBClient interface {
     
     // WakeDevice wakes up the target screen from low-power sleep states.
     WakeDevice(ctx context.Context, serial string) error
+
+    // CloseApp stops/kills the target companion application on the client.
+    CloseApp(ctx context.Context, serial string, pkg string) error
 }
 ```
 

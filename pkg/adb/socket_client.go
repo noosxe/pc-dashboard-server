@@ -233,6 +233,28 @@ func (c *SocketADBClient) WakeDevice(ctx context.Context, serial string) error {
 	return nil
 }
 
+// CloseApp stops/kills the target companion application activity via raw shell command.
+func (c *SocketADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
+	conn, err := c.connectToDevice(ctx, serial)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	cmd := fmt.Sprintf("shell:am force-stop %s", pkg)
+	if err := writeFrame(conn, cmd); err != nil {
+		return fmt.Errorf("failed to send close command: %w", err)
+	}
+
+	if err := checkOkay(conn); err != nil {
+		return fmt.Errorf("close app command rejected: %w", err)
+	}
+
+	// Read response until EOF to ensure the command executes to completion.
+	_, _ = io.Copy(io.Discard, conn)
+	return nil
+}
+
 // connectToDevice connects to the ADB server and sets up transport to device serial.
 func (c *SocketADBClient) connectToDevice(ctx context.Context, serial string) (net.Conn, error) {
 	addr := net.JoinHostPort(c.serverHost, strconv.Itoa(c.serverPort))

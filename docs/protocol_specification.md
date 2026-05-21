@@ -68,7 +68,15 @@ To allow the Android app to connect locally to the host PC, the daemon reverses 
 3.  **Daemon sends**: `0026reverse:forward:tcp:12345;tcp:12345`
 4.  **ADB Server responds**: `OKAY`
 
+#### Step 5: Closing Companion Application on Daemon Exit
+To prevent leaving a stale monitoring UI when the Go daemon exits, it sends a command to stop the companion application package on all active, connected devices:
+1.  **Daemon sends**: `0012host:transport:[serial]`
+2.  **ADB Server responds**: `OKAY`
+3.  **Daemon sends**: `002bshell:am force-stop com.noosxe.pc_dashboard`
+4.  **ADB Server responds**: `OKAY` followed by execution confirmation, then closes connection.
+
 ---
+
 
 ## 3. Bidirectional WebSocket JSON API
 

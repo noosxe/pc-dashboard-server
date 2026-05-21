@@ -22,26 +22,29 @@ type TelemetryPayload struct {
 
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
-	logger     *slog.Logger
-	cfg        *config.Config
-	metrics    metrics.MetricsReader
-	adbClient  adb.ADBClient
-	pool       *websocket.ConnectionPool
-	wsServer   *websocket.Server
-	intervalMu sync.Mutex
-	interval   time.Duration
-	resetChan  chan time.Duration
+	logger        *slog.Logger
+	cfg           *config.Config
+	metrics       metrics.MetricsReader
+	adbClient     adb.ADBClient
+	pool          *websocket.ConnectionPool
+	wsServer      *websocket.Server
+	intervalMu    sync.Mutex
+	interval      time.Duration
+	resetChan     chan time.Duration
+	activeSerials map[string]bool
+	serialsMu     sync.RWMutex
 }
 
 // NewEngine constructs a central Orchestrator.
 func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
-		logger:    daemonLogger,
-		cfg:       cfg,
-		metrics:   mr,
-		adbClient: ac,
-		interval:  time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
-		resetChan: make(chan time.Duration, 5),
+		logger:        daemonLogger,
+		cfg:           cfg,
+		metrics:       mr,
+		adbClient:     ac,
+		interval:      time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
+		resetChan:     make(chan time.Duration, 5),
+		activeSerials: make(map[string]bool),
 	}
 
 	// Wire callbacks into the WebSocket connection pool
@@ -85,9 +88,11 @@ func (e *Engine) Start(ctx context.Context) error {
 	select {
 	case err := <-errChan:
 		cancel()
+		e.cleanupDevices()
 		return err
 	case <-ctx.Done():
 		e.logger.Info("Shutting down core engine")
+		e.cleanupDevices()
 		return nil
 	}
 }
@@ -110,9 +115,15 @@ func (e *Engine) runADBTracker(ctx context.Context) error {
 
 			if ev.State == adb.StateOnline {
 				e.logger.Info("USB device connected. Initiating bootstrap", "serial", ev.Serial)
+				e.serialsMu.Lock()
+				e.activeSerials[ev.Serial] = true
+				e.serialsMu.Unlock()
 				go e.bootstrapDevice(ctx, ev.Serial)
 			} else {
 				e.logger.Info("USB device disconnected", "serial", ev.Serial)
+				e.serialsMu.Lock()
+				delete(e.activeSerials, ev.Serial)
+				e.serialsMu.Unlock()
 			}
 		}
 	}
@@ -237,4 +248,40 @@ func (e *Engine) handleAction(command string) {
 	default:
 		e.logger.Warn("Unknown control action", "command", command)
 	}
+}
+
+// cleanupDevices stops/kills the companion app on all active devices before exit.
+func (e *Engine) cleanupDevices() {
+	e.serialsMu.RLock()
+	serials := make([]string, 0, len(e.activeSerials))
+	for serial := range e.activeSerials {
+		serials = append(serials, serial)
+	}
+	e.serialsMu.RUnlock()
+
+	if len(serials) == 0 {
+		return
+	}
+
+	e.logger.Info("Shutting down daemon: Closing companion app on active devices", "count", len(serials))
+
+	// Use a short, independent context timeout to ensure cleanup commands execute even if
+	// the parent context was cancelled.
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for _, serial := range serials {
+		wg.Add(1)
+		go func(s string) {
+			defer wg.Done()
+			pkg := e.cfg.ADB.TargetPackage
+			if err := e.adbClient.CloseApp(cleanupCtx, s, pkg); err != nil {
+				e.logger.Error("Failed to close companion app on exit", "serial", s, "error", err)
+			} else {
+				e.logger.Info("Successfully closed companion app on exit", "serial", s)
+			}
+		}(serial)
+	}
+	wg.Wait()
 }
