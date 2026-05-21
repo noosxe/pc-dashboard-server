@@ -262,6 +262,23 @@ journalctl --user -u pc-dashboard.service -f -n 100
 
 ---
 
+## 🗺️ Roadmap
+
+We are continuously expanding the capabilities of the PC Dashboard ecosystem. Below are the key initiatives currently planned or underway:
+
+### 1. 🎵 MPRIS Media Player Control (D-Bus) 🟡 *[Design Phase]*
+Integrate with the Linux host's D-Bus session bus to dynamically monitor active media players (e.g., Spotify, VLC, Firefox) and allow the companion Android app to view and control media playback.
+- **Outbound Stream**: Dynamically push current playback state (status, track title, artist, album, duration, position, volume, and artwork) to all connected WebSocket clients.
+- **Inbound Commands**: Support WebSocket commands from the companion app to trigger playback actions (`Play`, `Pause`, `PlayPause`, `Next`, `Previous`, `Seek`, `Volume`).
+- **Architectural Isolation**: Keep D-Bus dependencies strictly decoupled from the core daemon loop to guarantee cross-compilation and execution stability even on systems without D-Bus.
+- *Status*: Detailed architectural design, message protocol, and WebSocket JSON schemas have been fully specified and approved. Implementation is currently scheduled for the next phase.
+
+### 2. ⚡ Additional Planned Enhancements
+- **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
+- **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
+
+---
+
 ## 💻 Development & Contributing
 
 All active development is expected to take place within the provided **Devcontainer** (`.devcontainer`). It has pre-installed tools and environments to support smooth and secure contributions.
