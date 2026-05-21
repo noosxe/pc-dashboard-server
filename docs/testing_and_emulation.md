@@ -6,12 +6,12 @@ This document outlines the testing, hardware mocking, and connection emulation s
 
 ## 1. Local Emulation Architecture
 
-The daemon utilizes modular interfaces (`MetricsReader` and `ADBClient`) defined in the system design specifications. By activating CLI flags or config options, the production drivers are swapped out for emulated mock engines:
+The daemon utilizes modular interfaces (`MetricsReader`, `ADBClient`, and `MPRISManager`) defined in the system design specifications. By activating CLI flags or config options, the production drivers are swapped out for emulated mock engines:
 
 ```
 [CLI Exec Flags]
    |
-   +---> --emulate-metrics  ==> Activates MockMetricsReader
+   +---> --emulate-metrics  ==> Activates MockMetricsReader & MockMPRISManager
    |
    +---> --mock-adb         ==> Activates MockADBClient (automocks hotplug loops)
 ```
@@ -39,6 +39,23 @@ To make the dashboard look realistic during client testing, the emulator generat
 *   **RAM Statistics**:
     *   *Total*: `34,359,738,368` bytes (32GB).
     *   *Used*: Fluctuates slowly: $12,884,901,888 + \sin(t / 30.0) \cdot 1,073,741,824$ bytes.
+
+### 2.2. Media Playback Emulation (`MockMPRISManager`)
+When the `--emulate-metrics` flag is enabled, the daemon also instantiates the `MockMPRISManager` to simulate media players and playback events.
+
+#### A. Playback Simulation Algorithms
+*   **Track Database**: The emulator maintains a pre-defined array of mock tracks:
+    1.  *Track 1*: Title: "Stayin' Alive", Artist: "Bee Gees", Album: "Saturday Night Fever", Length: 284s, Art URL: `https://images.example.com/stayinalive.jpg`
+    2.  *Track 2*: Title: "Billie Jean", Artist: "Michael Jackson", Album: "Thriller", Length: 294s, Art URL: `https://images.example.com/billiejean.jpg`
+    3.  *Track 3*: Title: "Take On Me", Artist: "a-ha", Album: "Hunting High and Low", Length: 225s, Art URL: `https://images.example.com/takeonme.jpg`
+*   **Progress Tracking**: The mock manager updates the current playback position ($p$) every second:
+    *   If `PlaybackStatus` is "Playing": $p_{t+1} = p_t + 1,000,000$ microseconds.
+    *   If $p \ge \text{Length}$, the manager automatically transitions to the next track in the list and resets $p = 0$.
+*   **Command Responses**:
+    *   `play_pause` / `play` / `pause`: Updates `PlaybackStatus` dynamically.
+    *   `next` / `previous`: Cycles the track pointer, resetting position.
+    *   `seek` / `set_position`: Adjusts the playback position variable accordingly (bounded between 0 and track length).
+    *   `set_volume`: Directly updates the volume float property (bounded between 0.0 and 1.0).
 
 ---
 
@@ -75,13 +92,14 @@ With the daemon running in emulation mode (`--emulate-metrics --mock-adb`), deve
     ```bash
     cargo install websocat # or apt-get install websocat
     ```
-*   **Listen to Live Telemetry**:
+*   **Listen to Live Telemetry & Media Updates**:
     ```bash
     websocat ws://127.0.0.1:12345/ws
     ```
-    *Output in console (updated every 1s)*:
+    *Output in console (telemetry pushes every 1s, media state on event)*:
     ```json
     {"type":"telemetry","timestamp":1716214001,"data":{"cpu":{"usage_percent":18.45,"temp_celsius":48.2},"gpu":{"usage_percent":42.1,"temp_celsius":59.3,"vram_used_bytes":4063225472,"vram_total_bytes":8589934592},"ram":{"used_bytes":13421772800,"total_bytes":34359738368,"percentage":39.06}}}
+    {"type":"media_state","timestamp":1716214002,"data":{"active_players":[{"player_name":"spotify","playback_status":"Playing","volume":0.85,"position_microseconds":45000000,"metadata":{"track_id":"spotify:track:4PTG3Z6ehGkBFm5zOHYGaS","title":"Stayin' Alive","artist":["Bee Gees"],"album":"Saturday Night Fever","art_url":"https://images.example.com/stayinalive.jpg","length_microseconds":284000000}}]}}
     ```
 *   **Send Control Command via websocat**:
     Type JSON strings directly into the websocat terminal interface to verify client-to-host actions:
@@ -89,6 +107,11 @@ With the daemon running in emulation mode (`--emulate-metrics --mock-adb`), deve
     { "type": "ping" }
     ```
     *Daemon Response in terminal*: `{"type":"pong"}`
+*   **Send Media Control Commands via websocat**:
+    Type JSON strings directly to trigger D-Bus commands on active players:
+    ```json
+    { "type": "media_command", "player_name": "spotify", "command": "play_pause" }
+    ```
 
 ---
 
@@ -106,13 +129,27 @@ Save the following code as `test_client.html` and open it in a browser:
         body { font-family: sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
         .card { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
         .val { color: #00e676; font-family: monospace; font-size: 1.2em; }
+        button { background: #333; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        button:hover { background: #444; }
     </style>
 </head>
 <body>
-    <h1>PC Dashboard Live Telemetry</h1>
+    <h1>PC Dashboard Live Telemetry & Media</h1>
     <div class="card">CPU Usage: <span id="cpu-use" class="val">--</span> % | Temp: <span id="cpu-temp" class="val">--</span> &deg;C</div>
     <div class="card">GPU Usage: <span id="gpu-use" class="val">--</span> % | Temp: <span id="gpu-temp" class="val">--</span> &deg;C</div>
     <div class="card">RAM Usage: <span id="ram-use" class="val">--</span> %</div>
+    
+    <div class="card">
+        <h3>Media Player Controls</h3>
+        <div>Active Player: <span id="media-player" class="val">--</span></div>
+        <div>Playing: <span id="media-title" class="val">--</span> - <span id="media-artist" class="val">--</span></div>
+        <div>Position: <span id="media-position" class="val">--</span>s / <span id="media-length" class="val">--</span>s (<span id="media-status" class="val">--</span>)</div>
+        <div style="margin-top: 10px;">
+            <button onclick="sendMediaCmd('previous')">Prev</button>
+            <button onclick="sendMediaCmd('play_pause')">Play/Pause</button>
+            <button onclick="sendMediaCmd('next')">Next</button>
+        </div>
+    </div>
     
     <script>
         const ws = new WebSocket("ws://127.0.0.1:12345/ws");
@@ -125,8 +162,36 @@ Save the following code as `test_client.html` and open it in a browser:
                 document.getElementById("gpu-temp").textContent = msg.data.gpu.temp_celsius.toFixed(1);
                 document.getElementById("ram-use").textContent = msg.data.ram.percentage.toFixed(1);
             }
+            if (msg.type === "media_state") {
+                const active = msg.data.active_players[0];
+                if (active) {
+                    document.getElementById("media-player").textContent = active.player_name;
+                    document.getElementById("media-title").textContent = active.metadata.title;
+                    document.getElementById("media-artist").textContent = active.metadata.artist.join(", ");
+                    document.getElementById("media-position").textContent = (active.position_microseconds / 1000000).toFixed(0);
+                    document.getElementById("media-length").textContent = (active.metadata.length_microseconds / 1000000).toFixed(0);
+                    document.getElementById("media-status").textContent = active.playback_status;
+                } else {
+                    document.getElementById("media-player").textContent = "--";
+                    document.getElementById("media-title").textContent = "--";
+                    document.getElementById("media-artist").textContent = "--";
+                    document.getElementById("media-position").textContent = "--";
+                    document.getElementById("media-length").textContent = "--";
+                    document.getElementById("media-status").textContent = "--";
+                }
+            }
         };
         ws.onopen = () => console.log("Connected to PC Dashboard Server");
+
+        function sendMediaCmd(cmd) {
+            const player = document.getElementById("media-player").textContent;
+            if (player === "--") return;
+            ws.send(JSON.stringify({
+                type: "media_command",
+                player_name: player,
+                command: cmd
+            }));
+        }
     </script>
 </body>
 </html>
@@ -202,4 +267,19 @@ To allow LLM agents to execute automated integration tests (such as `go test ./.
     conn.Write([]byte("00150123456789ABC\tdevice\n"))
     ```
 *   This pattern isolates the network socket logic from external environment states, giving both developers and AI agents instant, deterministic unit test validation of length-prefixed ADB frame parsing.
+
+### 6.4. Session D-Bus Socket Mocking (In-Memory Unit Tests)
+In automated unit test pipelines where no D-Bus Session Bus daemon is active (e.g., standard Docker CI runners), the D-Bus communication must be mocked to keep tests independent of the OS state:
+*   **Go Mock Interfaces**: Automated tests query the `MPRISManager` interface and inject mock structs (`MockMPRISManager`) instead of launching a live `godbus` socket.
+*   **Test Validation**: This enables standard Go tests to assert that media control commands dispatched through the loopback WebSocket server successfully trigger the corresponding method call handlers and state shifts, isolating testing to the daemon orchestrator itself:
+    ```go
+    func TestMediaCommandDispatch(t *testing.T) {
+        mockManager := &MockMPRISManager{}
+        // Inject mockManager into orchestrator...
+        err := mockManager.SendCommand(context.Background(), "spotify", "play_pause", nil)
+        if err != nil {
+            t.Errorf("Expected successful command dispatch, got: %v", err)
+        }
+    }
+    ```
 

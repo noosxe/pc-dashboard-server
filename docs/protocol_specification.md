@@ -9,7 +9,7 @@ This document provides the exhaustive protocol specifications for physical link 
 ```
 +-------------------------------------------------------------+
 |               Application Layer: WebSocket JSON             |
-|    (Telemetry pushes, client command events, ping/pong)     |
+| (Telemetry/Media pushes, client command events, ping/pong)  |
 +-------------------------------------------------------------+
 |             Transport Layer: WebSocket (RFC 6455)           |
 |                Binding strictly to 127.0.0.1                |
@@ -177,6 +177,162 @@ Triggered by physical actions on the dashboard interface.
 *   **Supported Commands**:
     *   `suspend`: Puts the Linux host system into low-power sleep (via systemd logind interfaces safely).
     *   `disconnect`: Requests clean shutdown of telemetry loops for the specific device session.
+
+---
+
+### 3.3. Outbound Media State Payload (Host → Android Client)
+This is an event-driven payload pushed asynchronously by the daemon whenever:
+* A new MPRIS player starts or stops (is detected on the D-Bus session bus).
+* An active player changes its playback status (e.g. paused to playing).
+* An active player changes the current track (metadata updates).
+* The volume or position changes significantly.
+
+#### JSON Schema Spec
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MediaStatePush",
+  "type": "object",
+  "required": ["type", "timestamp", "data"],
+  "properties": {
+    "type": { "type": "string", "const": "media_state" },
+    "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
+    "data": {
+      "type": "object",
+      "required": ["active_players"],
+      "properties": {
+        "active_players": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["player_name", "playback_status", "volume", "position_microseconds", "metadata"],
+            "properties": {
+              "player_name": { "type": "string" },
+              "playback_status": { "type": "string", "enum": ["Playing", "Paused", "Stopped"] },
+              "volume": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "position_microseconds": { "type": "integer", "minimum": 0 },
+              "metadata": {
+                "type": "object",
+                "required": ["track_id", "title", "artist", "album", "art_url", "length_microseconds"],
+                "properties": {
+                  "track_id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "artist": { "type": "array", "items": { "type": "string" } },
+                  "album": { "type": "string" },
+                  "art_url": { "type": "string", "format": "uri" },
+                  "length_microseconds": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "media_state",
+  "timestamp": 1716213825,
+  "data": {
+    "active_players": [
+      {
+        "player_name": "spotify",
+        "playback_status": "Playing",
+        "volume": 0.85,
+        "position_microseconds": 45120000,
+        "metadata": {
+          "track_id": "spotify:track:4PTG3Z6ehGkBFm5zOHYGaS",
+          "title": "Stayin' Alive",
+          "artist": ["Bee Gees"],
+          "album": "Saturday Night Fever",
+          "art_url": "https://i.scdn.co/image/ab67616d0000b27382b243023b937ebe57acfac2",
+          "length_microseconds": 284000000
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 3.4. Inbound Media Command Payload (Android Client → Host)
+The companion app can transmit media commands to control any active player on the host PC. The daemon will parse these commands and invoke the matching D-Bus methods on the specified MPRIS player service.
+
+#### Request JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MediaCommand",
+  "type": "object",
+  "required": ["type", "player_name", "command"],
+  "properties": {
+    "type": { "type": "string", "const": "media_command" },
+    "player_name": { "type": "string", "description": "The name of the target player (e.g. spotify)" },
+    "command": { 
+      "type": "string", 
+      "enum": ["play", "pause", "play_pause", "stop", "next", "previous", "seek", "set_position", "set_volume"] 
+    },
+    "args": {
+      "type": "object",
+      "properties": {
+        "offset_microseconds": { "type": "integer", "description": "Used with command: seek" },
+        "position_microseconds": { "type": "integer", "description": "Used with command: set_position" },
+        "track_id": { "type": "string", "description": "Used with command: set_position" },
+        "volume": { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Used with command: set_volume" }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Examples
+
+* **Play/Pause Toggle**:
+  ```json
+  {
+    "type": "media_command",
+    "player_name": "spotify",
+    "command": "play_pause"
+  }
+  ```
+
+* **Next Track**:
+  ```json
+  {
+    "type": "media_command",
+    "player_name": "spotify",
+    "command": "next"
+  }
+  ```
+
+* **Set Volume to 70%**:
+  ```json
+  {
+    "type": "media_command",
+    "player_name": "spotify",
+    "command": "set_volume",
+    "args": {
+      "volume": 0.7
+    }
+  }
+  ```
+
+* **Seek Relative Forward by 10s**:
+  ```json
+  {
+    "type": "media_command",
+    "player_name": "spotify",
+    "command": "seek",
+    "args": {
+      "offset_microseconds": 10000000
+    }
+  }
+  ```
 
 ---
 

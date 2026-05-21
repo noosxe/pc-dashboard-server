@@ -15,14 +15,17 @@ graph LR
     subgraph Host ["Linux Host System (Go Daemon)"]
         MetricsCollector[Metrics Engine]
         AdbTracker[ADB protocol Tracker]
+        MPRISEngine["MPRIS Media Engine"]
         WebSocketSrv[WebSocket Server]
         SystemdUser[Systemd User Service]
     end
 
-    subgraph Hardware ["System Sensors"]
-        CPU[CPU Temp & Usage]
-        RAM[RAM Used & Available]
-        GPU[GPU Usage & VRAM]
+    subgraph OS ["System & OS Services"]
+        CPU["CPU Temp & Usage"]
+        RAM["RAM Used & Available"]
+        GPU["GPU Usage & VRAM"]
+        DBus["D-Bus Session Bus"]
+        MediaPlayers["Media Players (e.g. Spotify, VLC)"]
     end
 
     subgraph Client ["Android Device"]
@@ -30,9 +33,13 @@ graph LR
         LocalWsClient[WebSocket Client]
     end
 
-    %% Sensor data flow
-    Hardware -->|sysfs / NVML| MetricsCollector
+    %% Sensor and media data flow
+    CPU & RAM & GPU -->|sysfs / NVML| MetricsCollector
     MetricsCollector -->|1-second Poll| WebSocketSrv
+    
+    MediaPlayers <-->|MPRIS Interface| DBus
+    DBus <-->|Pure Go D-Bus| MPRISEngine
+    MPRISEngine -->|Event-Driven Push| WebSocketSrv
 
     %% Auto-discovery and connection setup
     AdbTracker -->|Detects USB Hotplug| WebSocketSrv
@@ -233,6 +240,33 @@ journalctl --user -u pc-dashboard.service -f -n 100
 
 ---
 
+### 3.6. Media & Player Control Engine (MPRIS via D-Bus)
+The PC Dashboard Server leverages the **D-Bus Session Bus** to dynamically discover, track, and control active media players running in the user desktop space via the **MPRIS (Media Player Remote Interfacing Specification)** standard.
+
+#### A. Player Discovery & Tracking
+1.  **D-Bus Session Connection**: The daemon connects to the session D-Bus. Since it runs as a user systemd service, it operates within the logged-in user session, having direct, secure access to the user's D-Bus sockets without requiring elevated root permissions.
+2.  **Dynamic Discovery**:
+    *   **Listing Players**: The daemon queries the D-Bus interface `org.freedesktop.DBus` by invoking `ListNames` on path `/org/freedesktop/DBus` to find all services matching the prefix `org.mpris.MediaPlayer2.*`.
+    *   **Hot-Detection**: Rather than polling, the daemon registers to receive `org.freedesktop.DBus.NameOwnerChanged` signals on `/org/freedesktop/DBus` to immediately catch when media players are spawned (e.g. user opens Spotify) or closed (name owner changes to empty).
+3.  **Property & State Monitoring**:
+    *   For each active player, the daemon registers to listen for `org.freedesktop.DBus.Properties.PropertiesChanged` signals at object path `/org/mpris/MediaPlayer2` for the interface `org.mpris.MediaPlayer2.Player`.
+    *   This ensures that changes in metadata (track title, artist, art URL, length), playback status (`Playing`, `Paused`, `Stopped`), volume level, or playback position are caught via instant, event-driven callbacks.
+
+#### B. Media Player Control API
+The companion Android app can issue real-time media player commands back to the daemon over the WebSocket connection. The daemon maps these JSON payloads into standard D-Bus method calls targeting the `org.mpris.MediaPlayer2.Player` interface at `/org/mpris/MediaPlayer2` on the specific player's D-Bus name.
+*   **Methods Supported**:
+    *   `Next`: Moves to the next track.
+    *   `Previous`: Moves to the previous track.
+    *   `PlayPause`: Toggles the playback state.
+    *   `Play`: Resumes playback.
+    *   `Pause`: Pauses playback.
+    *   `Stop`: Stops playback.
+    *   `Seek` (Argument: `Offset` in microseconds): Relative seek.
+    *   `SetPosition` (Arguments: `TrackId` as string, `Position` in microseconds): Absolute seek to track position.
+    *   `Volume` (Property write: float double 0.0 to 1.0): Updates player volume.
+
+---
+
 ## 4. Security Model & Guidelines
 
 To ensure maximum safety and protect the user's host machine, the daemon adheres to the following secure coding principles:
@@ -243,3 +277,4 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 4.  **Graceful Failures**: If system sensors are missing or fail to read, the monitoring threads must continue reporting remaining system stats gracefully rather than terminating the daemon.
 5.  **No Credentials in Logs**: Logs outputted to systemd journal **MUST NOT** include any session tokens, client identities, or sensitive internal environmental keys.
 6.  **Structured Log Sanitization**: All log outputs must use the standard `log/slog` structured library. Log messages and attributes must never print un-sanitized user inputs or raw connection buffer contents to prevent log injection vulnerabilities.
+7.  **D-Bus Bound Validation**: Media player commands (such as Seek relative offsets and absolute Position microseconds) received via WebSockets must be validated for boundaries (e.g., negative length bounds, reasonable maximum volume float limits between `0.0` and `1.0`) before routing them to the host's D-Bus bus. This blocks malicious or erroneous WebSocket frames from sending out-of-range or malformed values to system applications.
