@@ -218,4 +218,3 @@ func TestSocketADBClient_CloseApp(t *testing.T) {
 		t.Errorf("CloseApp failed: %v", err)
 	}
 }
-
