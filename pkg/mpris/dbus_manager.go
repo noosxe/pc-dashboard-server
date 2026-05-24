@@ -13,13 +13,13 @@ import (
 
 // DbusMPRISManager coordinates native D-Bus monitoring and command execution.
 type DbusMPRISManager struct {
-	logger        *slog.Logger
-	sendConn      *dbus.Conn
-	mu            sync.RWMutex
-	activePlayers map[string]*PlayerState // keyed by unique owner name (e.g. ":1.123")
-	ownerToService map[string]string      // maps unique owner to well-known service name
-	eventsChan    chan MediaEvent
-	started       bool
+	logger         *slog.Logger
+	sendConn       *dbus.Conn
+	mu             sync.RWMutex
+	activePlayers  map[string]*PlayerState // keyed by unique owner name (e.g. ":1.123")
+	ownerToService map[string]string       // maps unique owner to well-known service name
+	eventsChan     chan MediaEvent
+	started        bool
 }
 
 // NewDbusMPRISManager connects to the session bus for sending commands.
