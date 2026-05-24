@@ -22,9 +22,10 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
   - Launches the companion Android application activity (`com.noosxe.pc_dashboard`).
   - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
+- **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
-- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms) and `--mock-adb` (simulated connection ticks) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
+- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms), `--mock-adb` (simulated connection ticks), and `--mock-notifications` (simulated desktop notifications) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
 
 ---
@@ -99,6 +100,7 @@ The server exposes the `start` subcommand to boot the daemon along with several 
 | `--port` | `-p` | `12345` | Overrides the WebSocket listening port |
 | `--emulate-metrics`| | `false` | Enables simulated telemetry metrics using smooth sine-wave algorithms |
 | `--mock-adb` | | `false` | Simulates USB hotplug connection ticks for local testing |
+| `--mock-notifications`| | `false` | Simulates desktop D-Bus notification events for local testing |
 | `--log-level` | | `"info"` | Sets structured logging level (`debug`, `info`, `warn`, `error`) |
 | `--log-format` | | `"text"` | Sets structured log output format (`text`, `json`) |
 | `--verbose` | `-v` | `false` | Unconditionally forces log level to `debug` |
@@ -273,13 +275,7 @@ Integrate with the Linux host's D-Bus session bus to dynamically monitor active 
 - **Architectural Isolation**: Keep D-Bus dependencies strictly decoupled from the core daemon loop to guarantee cross-compilation and execution stability even on systems without D-Bus.
 - *Status*: Detailed architectural design, message protocol, and WebSocket JSON schemas have been fully specified and approved. Implementation is currently scheduled for the next phase.
 
-### 2. 🔔 Desktop Notifications Sync (D-Bus) 🟡 *[Design Phase]*
-Bi-directional desktop notification integration with the Linux host's D-Bus notification system.
-- **Outbound Stream**: Dynamically catch D-Bus method calls to `org.freedesktop.Notifications.Notify` (using D-Bus eavesdropping/monitoring) and forward incoming desktop toast messages (app name, summary, body, icon) to the companion app.
-- **Inbound Commands**: Support WebSocket commands from the companion app or daemon itself to trigger standard host desktop notification popups via D-Bus session bus.
-- **Architectural Isolation**: Use modular interfaces to completely isolate D-Bus notification subsystems, supporting mock drivers in emulation mode.
-
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

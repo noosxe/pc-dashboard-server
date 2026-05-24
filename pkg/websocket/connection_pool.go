@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
 )
 
 // ClientConn wraps a raw websocket connection with safety locks.
@@ -23,20 +24,27 @@ func (c *ClientConn) WriteJSON(v interface{}) error {
 
 // ConnectionPool manages active clients and ensures safe write routing.
 type ConnectionPool struct {
-	logger         *slog.Logger
-	mu             sync.RWMutex
-	connections    map[*ClientConn]bool
-	onConfigChange func(intervalMs int)
-	onAction       func(command string)
+	logger                *slog.Logger
+	mu                    sync.RWMutex
+	connections           map[*ClientConn]bool
+	onConfigChange        func(intervalMs int)
+	onAction              func(command string)
+	onNotificationCommand func(notifications.NotificationRequest) (uint32, error)
 }
 
 // NewConnectionPool instantiates an active client pool.
-func NewConnectionPool(logger *slog.Logger, onConfigChange func(intervalMs int), onAction func(command string)) *ConnectionPool {
+func NewConnectionPool(
+	logger *slog.Logger,
+	onConfigChange func(intervalMs int),
+	onAction func(command string),
+	onNotificationCommand func(notifications.NotificationRequest) (uint32, error),
+) *ConnectionPool {
 	return &ConnectionPool{
-		logger:         logger,
-		connections:    make(map[*ClientConn]bool),
-		onConfigChange: onConfigChange,
-		onAction:       onAction,
+		logger:                logger,
+		connections:           make(map[*ClientConn]bool),
+		onConfigChange:        onConfigChange,
+		onAction:              onAction,
+		onNotificationCommand: onNotificationCommand,
 	}
 }
 
@@ -82,6 +90,16 @@ type InboundMessage struct {
 	Type     string           `json:"type"`
 	Command  string           `json:"command,omitempty"`
 	Settings *ElementSettings `json:"settings,omitempty"`
+
+	// Notification request fields (embedded directly at root level)
+	AppName       string                 `json:"app_name"`
+	ReplacesID    uint32                 `json:"replaces_id"`
+	AppIcon       string                 `json:"app_icon"`
+	Summary       string                 `json:"summary"`
+	Body          string                 `json:"body"`
+	Actions       []string               `json:"actions"`
+	Hints         map[string]interface{} `json:"hints"`
+	ExpireTimeout int32                  `json:"expire_timeout"`
 }
 
 // ElementSettings outlines configuration update payloads.
@@ -127,6 +145,45 @@ func (p *ConnectionPool) HandleClient(wsConn *websocket.Conn) {
 		case "action":
 			if p.onAction != nil {
 				p.onAction(inbound.Command)
+			}
+		case "notification_command":
+			if p.onNotificationCommand != nil {
+				req := notifications.NotificationRequest{
+					AppName:       inbound.AppName,
+					ReplacesID:    inbound.ReplacesID,
+					AppIcon:       inbound.AppIcon,
+					Summary:       inbound.Summary,
+					Body:          inbound.Body,
+					Actions:       inbound.Actions,
+					Hints:         inbound.Hints,
+					ExpireTimeout: inbound.ExpireTimeout,
+				}
+				// Default AppName and Icon values per schema if empty
+				if req.AppName == "" {
+					req.AppName = "pc-dashboard"
+				}
+				if req.AppIcon == "" {
+					req.AppIcon = "dialog-information"
+				}
+				if req.ExpireTimeout == 0 {
+					req.ExpireTimeout = -1
+				}
+
+				id, err := p.onNotificationCommand(req)
+				if err != nil {
+					p.logger.Error("Failed to execute notification command", "error", err)
+					_ = client.WriteJSON(map[string]interface{}{
+						"type":   "notification_response",
+						"status": "error",
+						"error":  err.Error(),
+					})
+				} else {
+					_ = client.WriteJSON(map[string]interface{}{
+						"type":   "notification_response",
+						"status": "success",
+						"id":     id,
+					})
+				}
 			}
 		}
 	}
