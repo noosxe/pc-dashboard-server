@@ -300,6 +300,34 @@ When a user interacts with a notification on the companion Android app, the app 
 
 ---
 
+### 3.8. Session Lock & Screensaver Detection (D-Bus)
+The PC Dashboard Server leverages both the **D-Bus Session Bus** and the **D-Bus System Bus** to dynamically track user desktop session lock and unlock states. This telemetry allows the Android companion client to enter sleeping mode after a timeout when the host PC is locked.
+
+#### A. Screensaver Status Interception (Session Bus)
+To support modern desktop environments (GNOME, KDE, Cinnamon, etc.) that manage screen locks via a user-session screensaver, the daemon connects to the D-Bus Session Bus:
+1.  **Match Signal Rules**: The daemon registers match rules to listen for screensaver active/state changes:
+    ```
+    type='signal',interface='org.freedesktop.ScreenSaver',member='ActiveChanged'
+    type='signal',interface='org.gnome.ScreenSaver',member='ActiveChanged'
+    ```
+2.  **State Parsing**: When an `ActiveChanged(bool)` signal is intercepted, the first body argument represents the screensaver state: `true` indicates the screensaver/lockscreen is active (session locked), and `false` indicates it is inactive (session unlocked).
+
+#### B. User Session State Interception (System Bus via systemd-logind)
+To capture physical console session locks managed by systemd, the daemon connects to the D-Bus System Bus:
+1.  **Match Signal Rules**: The daemon registers match rules targeting systemd's `logind` session manager:
+    ```
+    type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Session',member='Lock'
+    type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Session',member='Unlock'
+    ```
+2.  **State Parsing**: Intercepting the `Lock` signal designates transition to a locked session. Intercepting the `Unlock` signal designates transition to an unlocked session.
+
+#### C. Unified Pipeline and Deduplication
+Since multiple signals (e.g. systemd-logind `Lock` and GNOME Screensaver `ActiveChanged`) might fire simultaneously during a lock event, the daemon pipes both event sources into a unified engine. 
+1.  **Deduplication**: The engine tracks the current session lock state. It deduplicates incoming events and only triggers an outbound WebSocket notification if a genuine transition has occurred.
+2.  **Graceful Fallback**: If either bus connection or registration fails (e.g., in headless environments, containers, or systems without a system bus), the daemon logs a warning and gracefully operates using only the successful bus, ensuring continuous operation.
+
+---
+
 ## 4. Security Model & Guidelines
 
 To ensure maximum safety and protect the user's host machine, the daemon adheres to the following secure coding principles:
@@ -312,3 +340,4 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 6.  **Structured Log Sanitization**: All log outputs must use the standard `log/slog` structured library. Log messages and attributes must never print un-sanitized user inputs or raw connection buffer contents to prevent log injection vulnerabilities.
 7.  **D-Bus Bound Validation**: Media player commands (such as Seek relative offsets and absolute Position microseconds) received via WebSockets must be validated for boundaries (e.g., negative length bounds, reasonable maximum volume float limits between `0.0` and `1.0`) before routing them to the host's D-Bus bus. This blocks malicious or erroneous WebSocket frames from sending out-of-range or malformed values to system applications.
 8.  **Notification Safety Boundaries**: Notification summary and body fields received via WebSockets will be subject to strict length limitations (e.g., maximum 512 bytes for summary, 2048 bytes for body) and simple markup validation (stripping dangerous or invalid HTML elements) to prevent injection exploits in the host's notification daemon. The `Hints` dictionary must be restricted to verified safe primitive keys (e.g., `urgency`, `category`) to block serialization issues.
+9.  **Lock State Isolation**: The outbound session lock status must only convey a simple binary status (`locked`: boolean). No active session names, user IDs, or environment details may ever be sent to the companion app, protecting user session privacy from physical/network exposure.

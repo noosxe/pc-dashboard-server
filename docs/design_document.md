@@ -78,6 +78,7 @@ graph TD
     DaemonCore -->|uses| ADBClient[ADBClient Interface]
     DaemonCore -->|uses| MPRISManager[MPRISManager Interface]
     DaemonCore -->|uses| NotificationManager[NotificationManager Interface]
+    DaemonCore -->|uses| LockManager[LockManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
@@ -90,6 +91,9 @@ graph TD
 
     NotificationManager -.->|Implementation| DbusNotifications[DbusNotificationManager <br>Pure Go D-Bus session bus]
     NotificationManager -.->|Implementation| MockNotifications[MockNotificationManager <br>Simulated notification popups]
+
+    LockManager -.->|Implementation| DbusLock[DbusLockManager <br>Pure Go D-Bus session/system buses]
+    LockManager -.->|Implementation| MockLock[MockLockManager <br>Simulated session lock events]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -296,7 +300,31 @@ type NotificationManager interface {
 	1.  `DbusNotificationManager`: Production client communicating directly over D-Bus Session sockets using `godbus`'s `BecomeMonitor` for interception, correlating returned notification IDs, emitting `ActionInvoked` signals for actions, and calling `CloseNotification` methods for dismissal.
 	2.  `MockNotificationManager`: Emulation client that triggers randomized simulated notification events with incrementing IDs, logs mock actions, and logs mock dismissals.
 
-### 4.5. Application Package & Module Layout
+### 4.5. Session Lock Interface (`LockManager`)
+The user session lock status tracking engine communicates exclusively through this interface:
+
+```go
+package lock
+
+import "context"
+
+// SessionLockEvent represents a change in the user session lock status.
+type SessionLockEvent struct {
+	Locked bool `json:"locked"`
+}
+
+// LockManager defines the contract for monitoring session lock/unlock events.
+type LockManager interface {
+	// Start begins monitoring the session lock status and pushes state updates.
+	Start(ctx context.Context) (<-chan SessionLockEvent, error)
+}
+```
+
+*   **Implementations**:
+	1.  `DbusLockManager`: Production client monitoring systemd session lock/unlock events via `dbus.ConnectSystemBus()` and screensaver activation changes via `dbus.ConnectSessionBus()`, piping them to a single unified channel.
+	2.  `MockLockManager`: Emulation client that simulates lock and unlock status toggles on a periodic ticker to enable offline testing.
+
+### 4.6. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -325,6 +353,10 @@ pc-dashboard-server/
 │   │   ├── notifications.go      # NotificationManager interface & event models
 │   │   ├── dbus_manager.go       # Production NotificationManager (native D-Bus:session)
 │   │   └── mock_manager.go       # Simulated notification event generator
+│   ├── lock/                     # Session Lock & Screensaver monitoring module
+│   │   ├── lock.go               # LockManager interface & event models
+│   │   ├── dbus_manager.go       # Production LockManager (Session & System D-Bus)
+│   │   └── mock_manager.go       # Simulated session lock event generator
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -335,10 +367,10 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, and `NotificationManager`.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, and `LockManager`.
 2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
-4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager` and `NotificationManager` event channels, pushing `media_state` and `notification_event` updates to the WebSocket broadcaster as they arrive.
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, and `LockManager` event channels, pushing `media_state`, `notification_event`, and `session_lock` updates to the WebSocket broadcaster as they arrive.
 5. **Command Ingestion Phase**: WebSocket clients send `notification_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager.SendNotification` to trigger native D-Bus toasts on the host desktop.
 
 ---

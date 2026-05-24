@@ -275,7 +275,12 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. ⚡ Additional Planned Enhancements
+### 2. 🔒 Session Lock/Unlock Event Detection (D-Bus) 🟡 *[Design Phase]*
+Intercept host PC user session lock/unlock events via systemd-logind system bus and screensaver session bus signals. Push real-time event updates to the companion Android app via WebSocket (`session_lock` payload) so the mobile device can enter sleeping mode automatically when the PC is locked.
+- **Outbound Stream**: Intercept screensaver activation status on the D-Bus Session Bus (`ActiveChanged`) and systemd session Lock/Unlock status on the D-Bus System Bus (`Lock`/`Unlock`), deduplicate, and broadcast the lock status.
+- *Status*: Detailed design and protocol specifications have been established. Awaiting design review and approval.
+
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
