@@ -12,6 +12,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
 	"github.com/noosxe/pc-dashboard-server/pkg/daemon"
+	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
@@ -23,6 +24,7 @@ var (
 	emulateMetrics    bool
 	mockADB           bool
 	mockNotifications bool
+	mockLock          bool
 	serverPort        int
 	verbose           bool
 	logLevel          string
@@ -141,12 +143,27 @@ and loopback WebSocket streaming server.`,
 			}
 		}
 
-		// 7. Setup termination context
+		// 7. Resolve Lock provider based on mock flags
+		var lm lock.LockManager
+		if mockLock {
+			cliLogger.Info("Mock Lock Mode enabled: Using MockLockManager")
+			lm = lock.NewMockLockManager(logger.With("module", "lock"))
+		} else {
+			cliLogger.Info("Production Lock Mode enabled: Using DbusLockManager")
+			var err error
+			lm, err = lock.NewDbusLockManager(logger.With("module", "lock"))
+			if err != nil {
+				cliLogger.Warn("Failed to connect to D-Bus for session lock monitoring, falling back to mock mode", "error", err)
+				lm = lock.NewMockLockManager(logger.With("module", "lock"))
+			}
+		}
+
+		// 8. Setup termination context
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// 8. Build and start daemon engine
-		engine := daemon.NewEngine(cfg, mr, ac, nm, mm, daemonLogger, websocketLogger)
+		// 9. Build and start daemon engine
+		engine := daemon.NewEngine(cfg, mr, ac, nm, mm, lm, daemonLogger, websocketLogger)
 		if err := engine.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				cliLogger.Error("Daemon terminated with error", "error", err)
@@ -164,6 +181,7 @@ func init() {
 	StartCmd.Flags().BoolVar(&emulateMetrics, "emulate-metrics", false, "Enable simulated sine-wave telemetry metrics")
 	StartCmd.Flags().BoolVar(&mockADB, "mock-adb", false, "Enable simulated USB connection ticks")
 	StartCmd.Flags().BoolVar(&mockNotifications, "mock-notifications", false, "Enable simulated desktop notifications sync")
+	StartCmd.Flags().BoolVar(&mockLock, "mock-lock", false, "Enable simulated session lock/unlock events")
 	StartCmd.Flags().IntVarP(&serverPort, "port", "p", 0, "Overriding WebSocket local port")
 	StartCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Force log level to debug")
 	StartCmd.Flags().StringVar(&logLevel, "log-level", "", "Structured logging level (debug, info, warn, error)")

@@ -9,6 +9,7 @@ import (
 
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
+	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
@@ -36,6 +37,13 @@ type MediaStatePayload struct {
 	Data      mpris.MediaEvent `json:"data"`
 }
 
+// SessionLockPayload outlines the outer JSON wrapper broadcasted to clients for lock/unlock states.
+type SessionLockPayload struct {
+	Type      string                `json:"type"`
+	Timestamp int64                 `json:"timestamp"`
+	Data      lock.SessionLockEvent `json:"data"`
+}
+
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
 	logger          *slog.Logger
@@ -44,6 +52,7 @@ type Engine struct {
 	adbClient       adb.ADBClient
 	notificationMgr notifications.NotificationManager
 	mprisMgr        mpris.MPRISManager
+	lockMgr         lock.LockManager
 	pool            *websocket.ConnectionPool
 	wsServer        *websocket.Server
 	intervalMu      sync.Mutex
@@ -54,7 +63,7 @@ type Engine struct {
 }
 
 // NewEngine constructs a central Orchestrator.
-func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
+func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, lm lock.LockManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
 		logger:          daemonLogger,
 		cfg:             cfg,
@@ -62,6 +71,7 @@ func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, n
 		adbClient:       ac,
 		notificationMgr: nm,
 		mprisMgr:        mm,
+		lockMgr:         lm,
 		interval:        time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
 		resetChan:       make(chan time.Duration, 5),
 		activeSerials:   make(map[string]bool),
@@ -114,6 +124,14 @@ func (e *Engine) Start(ctx context.Context) error {
 	go func() {
 		if err := e.runMPRISMonitor(gCtx); err != nil {
 			e.logger.Error("MPRIS monitor terminated", "error", err)
+			errChan <- err
+		}
+	}()
+
+	// 6. Boot Session Lock monitoring thread
+	go func() {
+		if err := e.runLockMonitor(gCtx); err != nil {
+			e.logger.Error("Session lock monitor terminated", "error", err)
 			errChan <- err
 		}
 	}()
@@ -374,6 +392,32 @@ func (e *Engine) runMPRISMonitor(ctx context.Context) error {
 
 			payload := MediaStatePayload{
 				Type:      "media_state",
+				Timestamp: time.Now().Unix(),
+				Data:      ev,
+			}
+			e.pool.Broadcast(payload)
+		}
+	}
+}
+
+// runLockMonitor monitors session lock events and broadcasts status changes to WebSocket clients.
+func (e *Engine) runLockMonitor(ctx context.Context) error {
+	events, err := e.lockMgr.Start(ctx)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-events:
+			if !ok {
+				return nil
+			}
+
+			payload := SessionLockPayload{
+				Type:      "session_lock",
 				Timestamp: time.Now().Unix(),
 				Data:      ev,
 			}
