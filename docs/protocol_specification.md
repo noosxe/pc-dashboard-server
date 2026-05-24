@@ -481,6 +481,42 @@ The companion app can transmit this command to explicitly close/dismiss a notifi
   "type": "notification_dismiss_command",
   "notification_id": 1042
 }
+```
+
+---
+
+### 3.9. Outbound Session Lock Payload (Host → Android Client)
+This is an event-driven payload pushed asynchronously by the daemon whenever the host PC user session is locked or unlocked. This is used by the Android companion app to put the device screen into low-power sleeping mode after a configured timeout.
+
+#### JSON Schema Spec
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SessionLockPush",
+  "type": "object",
+  "required": ["type", "timestamp", "data"],
+  "properties": {
+    "type": { "type": "string", "const": "session_lock" },
+    "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
+    "data": {
+      "type": "object",
+      "required": ["locked"],
+      "properties": {
+        "locked": { "type": "boolean", "description": "True if host user session is locked, false if unlocked" }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "session_lock",
+  "timestamp": 1716213825,
+  "data": {
+    "locked": true
+  }
 }
 ```
 
