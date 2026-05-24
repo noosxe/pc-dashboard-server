@@ -275,7 +275,13 @@ Integrate with the Linux host's D-Bus session bus to dynamically monitor active 
 - **Architectural Isolation**: Keep D-Bus dependencies strictly decoupled from the core daemon loop to guarantee cross-compilation and execution stability even on systems without D-Bus.
 - *Status*: Detailed architectural design, message protocol, and WebSocket JSON schemas have been fully specified and approved. Implementation is currently scheduled for the next phase.
 
-### 2. ⚡ Additional Planned Enhancements
+### 2. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
+Integrate with the Linux host's D-Bus session bus to correlate system-assigned notification IDs and allow the companion Android app to trigger action buttons (e.g. Reply, Dismiss, Custom actions) on intercepted notifications and close them remotely.
+- **Outbound Stream**: Intercept both method calls and method returns of desktop notifications, correlate their properties using call/reply serial numbers, and push events complete with unique notification IDs and action options.
+- **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
+- *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
+
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

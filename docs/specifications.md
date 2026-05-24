@@ -270,21 +270,33 @@ The companion Android app can issue real-time media player commands back to the 
 ### 3.7. Desktop Notification Sync (D-Bus)
 The PC Dashboard Server leverages the **D-Bus Session Bus** to dynamically intercept desktop notifications sent by other applications and forward them to the companion Android app, as well as to publish notifications triggered by the companion app or daemon itself back to the host system.
 
-#### A. Notification Eavesdropping & Interception
+#### A. Notification Eavesdropping & ID Interception
 To catch notifications non-disruptively without interfering with the desktop environment's own notification daemon, the server configures its D-Bus connection as a monitor.
 1.  **D-Bus Monitor Mode**: The daemon calls `BecomeMonitor` on the D-Bus interface `org.freedesktop.DBus.Monitoring` at `/org/freedesktop/DBus`.
-2.  **Match Rules**: The monitor registration passes a match rule filtering specifically for calls to the standard notification method:
+2.  **Match Rules**: The monitor registration passes rules to listen for both the inbound method calls and outbound method returns of standard notifications:
     ```
     type='method_call',interface='org.freedesktop.Notifications',member='Notify'
+    type='method_return'
     ```
-3.  **Non-Disruptive Flow**: Because this uses D-Bus eavesdropping/monitoring, the D-Bus daemon delivers a duplicate copy of the `Notify` method call frame to our daemon while routing the original message to the standard desktop notification service (such as Dunst, Mako, or GNOME Shell) completely unmodified.
-4.  **Payload Extraction**: The daemon intercepts the `Notify` arguments and extracts the `AppName` (string), `ReplacesID` (uint32), `AppIcon` (string), `Summary` (string), `Body` (string), `Actions` (array of strings), `Hints` (dictionary of string to variant), and `ExpireTimeout` (int32). These are structured and pushed asynchronously to the WebSocket pool.
+3.  **Non-Disruptive Flow**: The session bus routes duplicates of these frames to our monitor connection. The original flows between the client apps and the desktop notification service are completely untouched.
+4.  **Payload Extraction**: The daemon intercepts the `Notify` method call arguments: `AppName` (string), `ReplacesID` (uint32), `AppIcon` (string), `Summary` (string), `Body` (string), `Actions` (array of strings), `Hints` (dictionary), and `ExpireTimeout` (int32).
+5.  **Asynchronous ID Correlation**: Since system-assigned notification IDs are returned asynchronously in the method reply, the daemon caches the intercepted `Notify` payload in a thread-safe map keyed by the message `Serial()`. When the matching `method_return` is intercepted, its `ReplySerial` header is correlated back to the cached call. The generated notification `ID` (uint32) is extracted from the reply, attached to the notification event payload, and the event is broadcasted over WebSockets. A cache TTL of 5 seconds prevents memory leaks.
 
 #### B. Notification Publishing API
 The companion Android app or daemon can trigger new host system toasts by sending a notification request:
 1.  **Method Invocation**: The daemon establishes a standard D-Bus connection and invokes `org.freedesktop.Notifications.Notify` targeting the service `org.freedesktop.Notifications` at path `/org/freedesktop/Notifications`.
 2.  **Arguments Construction**: The call is constructed with the supplied message fields (`AppName`, `ReplacesID`, `AppIcon`, `Summary`, `Body`, `Actions`, `Hints`, `ExpireTimeout`).
 3.  **Result Routing**: The D-Bus broker returns a unique `NotificationID` (uint32) upon success, which is mapped and routed back to the initiating client.
+
+#### C. Notification Actions & Dismissal API
+When a user interacts with a notification on the companion Android app, the app sends commands back to the server:
+1.  **Invoking Actions**: To invoke an action (e.g. clicking a button), the companion app sends a `notification_action_command` with the `notification_id` and `action_key`. The daemon translates this into an `ActionInvoked` signal emitted on the session D-Bus bus:
+    - **Object Path**: `/org/freedesktop/Notifications`
+    - **Interface**: `org.freedesktop.Notifications`
+    - **Signal Name**: `ActionInvoked`
+    - **Parameters**: `id` (uint32), `action_key` (string)
+    This broadcasts the action, alerting the original calling application to perform the requested flow (e.g., open a message).
+2.  **Notification Dismissal**: When the companion app sends a `notification_dismiss_command` (or immediately following an action invocation to clean up), the daemon calls the D-Bus method `org.freedesktop.Notifications.CloseNotification` with the target `notification_id` as an argument to dismiss the visual toast on the host system desktop.
 
 ---
 
