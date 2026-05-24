@@ -24,9 +24,10 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
 - **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
+- **🔒 Session Lock/Unlock Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Dispatches real-time WebSocket updates, enabling companion Android app sleep states during host locks.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
-- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms and mock MPRIS media controls), `--mock-adb` (simulated connection ticks), and `--mock-notifications` (simulated desktop notifications) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
+- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms and mock MPRIS media controls), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
 
 ---
@@ -102,6 +103,7 @@ The server exposes the `start` subcommand to boot the daemon along with several 
 | `--emulate-metrics`| | `false` | Enables simulated telemetry metrics using smooth sine-wave algorithms |
 | `--mock-adb` | | `false` | Simulates USB hotplug connection ticks for local testing |
 | `--mock-notifications`| | `false` | Simulates desktop D-Bus notification events for local testing |
+| `--mock-lock` | | `false` | Simulates session lock/unlock events for local testing |
 | `--log-level` | | `"info"` | Sets structured logging level (`debug`, `info`, `warn`, `error`) |
 | `--log-format` | | `"text"` | Sets structured log output format (`text`, `json`) |
 | `--verbose` | `-v` | `false` | Unconditionally forces log level to `debug` |
@@ -275,12 +277,7 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. 🔒 Session Lock/Unlock Event Detection (D-Bus) 🟡 *[Design Phase]*
-Intercept host PC user session lock/unlock events via systemd-logind system bus and screensaver session bus signals. Push real-time event updates to the companion Android app via WebSocket (`session_lock` payload) so the mobile device can enter sleeping mode automatically when the PC is locked.
-- **Outbound Stream**: Intercept screensaver activation status on the D-Bus Session Bus (`ActiveChanged`) and systemd session Lock/Unlock status on the D-Bus System Bus (`Lock`/`Unlock`), deduplicate, and broadcast the lock status.
-- *Status*: Detailed design and protocol specifications have been established. Awaiting design review and approval.
-
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
