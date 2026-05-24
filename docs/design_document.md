@@ -253,6 +253,7 @@ import "context"
 
 // NotificationEvent represents a notification caught on the D-Bus bus.
 type NotificationEvent struct {
+	ID            uint32                 `json:"id"`
 	AppName       string                 `json:"app_name"`
 	ReplacesID    uint32                 `json:"replaces_id"`
 	AppIcon       string                 `json:"app_icon"`
@@ -282,12 +283,18 @@ type NotificationManager interface {
 
 	// SendNotification triggers a notification on D-Bus.
 	SendNotification(ctx context.Context, req NotificationRequest) (uint32, error)
+
+	// CloseNotification dismisses an active notification on the host system.
+	CloseNotification(ctx context.Context, id uint32) error
+
+	// InvokeAction invokes a designated action button/behavior on the target notification.
+	InvokeAction(ctx context.Context, id uint32, actionKey string) error
 }
 ```
 
 *   **Implementations**:
-    1.  `DbusNotificationManager`: Production client communicating directly over D-Bus Session sockets using `godbus`'s `BecomeMonitor` for interception and standard method invocations for publishing.
-    2.  `MockNotificationManager`: Emulation client that triggers randomized simulated notification events and handles logging of published notifications.
+	1.  `DbusNotificationManager`: Production client communicating directly over D-Bus Session sockets using `godbus`'s `BecomeMonitor` for interception, correlating returned notification IDs, emitting `ActionInvoked` signals for actions, and calling `CloseNotification` methods for dismissal.
+	2.  `MockNotificationManager`: Emulation client that triggers randomized simulated notification events with incrementing IDs, logs mock actions, and logs mock dismissals.
 
 ### 4.5. Application Package & Module Layout
 

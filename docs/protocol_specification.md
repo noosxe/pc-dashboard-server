@@ -351,14 +351,15 @@ This is an event-driven payload pushed asynchronously by the daemon whenever a d
     "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
     "data": {
       "type": "object",
-      "required": ["app_name", "replaces_id", "app_icon", "summary", "body", "actions", "hints", "expire_timeout"],
+      "required": ["id", "app_name", "replaces_id", "app_icon", "summary", "body", "actions", "hints", "expire_timeout"],
       "properties": {
+        "id": { "type": "integer", "minimum": 0, "description": "Host-assigned unique notification ID" },
         "app_name": { "type": "string" },
         "replaces_id": { "type": "integer", "minimum": 0 },
         "app_icon": { "type": "string" },
         "summary": { "type": "string" },
         "body": { "type": "string" },
-        "actions": { "type": "array", "items": { "type": "string" } },
+        "actions": { "type": "array", "items": { "type": "string" }, "description": "Interleaved action key/label pairs" },
         "hints": { "type": "object" },
         "expire_timeout": { "type": "integer" }
       }
@@ -373,12 +374,13 @@ This is an event-driven payload pushed asynchronously by the daemon whenever a d
   "type": "notification_event",
   "timestamp": 1716213825,
   "data": {
+    "id": 1042,
     "app_name": "Slack",
     "replaces_id": 0,
     "app_icon": "slack",
     "summary": "New message from Alice",
     "body": "Hey, are you free for a call?",
-    "actions": ["default", "Activate"],
+    "actions": ["default", "Activate", "dismiss", "Dismiss"],
     "hints": {
       "urgency": 1
     },
@@ -422,6 +424,63 @@ The companion app (or external WebSocket source) can transmit this command to tr
   "body": "Android companion app successfully established link.",
   "app_icon": "dialog-information",
   "expire_timeout": 3000
+}
+```
+
+---
+
+### 3.7. Inbound Notification Action Command Payload (Android Client → Host)
+The companion app can transmit this command to trigger a specific action (button click) on a notification that was previously intercepted by the host.
+
+#### Request JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotificationActionCommand",
+  "type": "object",
+  "required": ["type", "notification_id", "action_key"],
+  "properties": {
+    "type": { "type": "string", "const": "notification_action_command" },
+    "notification_id": { "type": "integer", "minimum": 0, "description": "The unique system-assigned ID of the target notification" },
+    "action_key": { "type": "string", "description": "The key of the action to trigger (e.g. 'default', 'dismiss')" }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "notification_action_command",
+  "notification_id": 1042,
+  "action_key": "default"
+}
+```
+
+---
+
+### 3.8. Inbound Notification Dismiss Command Payload (Android Client → Host)
+The companion app can transmit this command to explicitly close/dismiss a notification on the host system.
+
+#### Request JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotificationDismissCommand",
+  "type": "object",
+  "required": ["type", "notification_id"],
+  "properties": {
+    "type": { "type": "string", "const": "notification_dismiss_command" },
+    "notification_id": { "type": "integer", "minimum": 0, "description": "The unique system-assigned ID of the notification to close" }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "notification_dismiss_command",
+  "notification_id": 1042
+}
 }
 ```
 
