@@ -23,8 +23,8 @@ type TelemetryPayload struct {
 
 // NotificationEventPayload outlines the outer JSON wrapper broadcasted to clients for intercepted events.
 type NotificationEventPayload struct {
-	Type      string                         `json:"type"`
-	Timestamp int64                          `json:"timestamp"`
+	Type      string                          `json:"type"`
+	Timestamp int64                           `json:"timestamp"`
 	Data      notifications.NotificationEvent `json:"data"`
 }
 
