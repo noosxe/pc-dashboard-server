@@ -10,6 +10,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
+	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
 	"github.com/noosxe/pc-dashboard-server/pkg/websocket"
 )
@@ -28,6 +29,13 @@ type NotificationEventPayload struct {
 	Data      notifications.NotificationEvent `json:"data"`
 }
 
+// MediaStatePayload outlines the outer JSON wrapper broadcasted to clients for MPRIS states.
+type MediaStatePayload struct {
+	Type      string           `json:"type"`
+	Timestamp int64            `json:"timestamp"`
+	Data      mpris.MediaEvent `json:"data"`
+}
+
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
 	logger          *slog.Logger
@@ -35,6 +43,7 @@ type Engine struct {
 	metrics         metrics.MetricsReader
 	adbClient       adb.ADBClient
 	notificationMgr notifications.NotificationManager
+	mprisMgr        mpris.MPRISManager
 	pool            *websocket.ConnectionPool
 	wsServer        *websocket.Server
 	intervalMu      sync.Mutex
@@ -45,20 +54,21 @@ type Engine struct {
 }
 
 // NewEngine constructs a central Orchestrator.
-func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
+func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
 		logger:          daemonLogger,
 		cfg:             cfg,
 		metrics:         mr,
 		adbClient:       ac,
 		notificationMgr: nm,
+		mprisMgr:        mm,
 		interval:        time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
 		resetChan:       make(chan time.Duration, 5),
 		activeSerials:   make(map[string]bool),
 	}
 
 	// Wire callbacks into the WebSocket connection pool
-	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand)
+	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand, e.handleMediaCommand)
 	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, websocketLogger)
 
 	return e
@@ -69,7 +79,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	gCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errChan := make(chan error, 4)
+	errChan := make(chan error, 5)
 
 	// 1. Boot WebSocket HTTP listener thread
 	go func() {
@@ -96,6 +106,14 @@ func (e *Engine) Start(ctx context.Context) error {
 	go func() {
 		if err := e.runNotificationMonitor(gCtx); err != nil {
 			e.logger.Error("Notification monitor terminated", "error", err)
+			errChan <- err
+		}
+	}()
+
+	// 5. Boot MPRIS monitoring thread
+	go func() {
+		if err := e.runMPRISMonitor(gCtx); err != nil {
+			e.logger.Error("MPRIS monitor terminated", "error", err)
 			errChan <- err
 		}
 	}()
@@ -336,4 +354,38 @@ func (e *Engine) cleanupDevices() {
 		}(serial)
 	}
 	wg.Wait()
+}
+
+// runMPRISMonitor monitors active media players and broadcasts status changes to WebSocket clients.
+func (e *Engine) runMPRISMonitor(ctx context.Context) error {
+	events, err := e.mprisMgr.Start(ctx)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-events:
+			if !ok {
+				return nil
+			}
+
+			payload := MediaStatePayload{
+				Type:      "media_state",
+				Timestamp: time.Now().Unix(),
+				Data:      ev,
+			}
+			e.pool.Broadcast(payload)
+		}
+	}
+}
+
+// handleMediaCommand processes media control requests routed from WebSocket clients.
+func (e *Engine) handleMediaCommand(playerName string, command string, args map[string]interface{}) error {
+	e.logger.Info("Executing media command via WebSocket", "player", playerName, "command", command)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return e.mprisMgr.SendCommand(ctx, playerName, command, args)
 }

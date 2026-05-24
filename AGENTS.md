@@ -62,8 +62,15 @@ git checkout -b docs/agent-git-workflow
 ### 3. Make and Commit Your Changes
 While working, keep your commits clean, focused, and well-described.
 * Ensure the code compiles and tests pass before committing.
+* **Pre-Commit Verification**: You MUST run formatting, unit tests, and static checks before *every* commit:
+  ```bash
+  go fmt ./...
+  go test -v ./...
+  go vet ./...
+  ```
 * Write clear, concise commit messages. **Do NOT** add any "co-authored by AI/LLM Agent" statements to your commits, as this is already covered by the global notice in the repository's `README.md`.
 * ⚠️ **Preserve Your Work**: Never blindly discard changes. When in doubt, stop and ask the user. If you are sure the changes are going to be needed later, stash them using `git stash`.
+
 
 ```bash
 git add .
@@ -154,7 +161,7 @@ When the user asks for the feature implementation to proceed:
   git checkout your-branch
   git rebase main
   ```
-* 🧪 **Verify changes**: Run tests and lint checks locally before pushing your changes to ensure code quality.
+* 🧪 **Verify changes**: Run the formatter (`go fmt ./...`), tests (`go test -v ./...`), and lint checks (`go vet ./...`) locally before *every* commit to ensure absolute code quality and prevent CI build breaks.
 
 ---
 

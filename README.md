@@ -22,10 +22,11 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
   - Launches the companion Android application activity (`com.noosxe.pc_dashboard`).
   - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
+- **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
-- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms), `--mock-adb` (simulated connection ticks), and `--mock-notifications` (simulated desktop notifications) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
+- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms and mock MPRIS media controls), `--mock-adb` (simulated connection ticks), and `--mock-notifications` (simulated desktop notifications) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
 
 ---
@@ -268,20 +269,13 @@ journalctl --user -u pc-dashboard.service -f -n 100
 
 We are continuously expanding the capabilities of the PC Dashboard ecosystem. Below are the key initiatives currently planned or underway:
 
-### 1. 🎵 MPRIS Media Player Control (D-Bus) 🟡 *[Design Phase]*
-Integrate with the Linux host's D-Bus session bus to dynamically monitor active media players (e.g., Spotify, VLC, Firefox) and allow the companion Android app to view and control media playback.
-- **Outbound Stream**: Dynamically push current playback state (status, track title, artist, album, duration, position, volume, and artwork) to all connected WebSocket clients.
-- **Inbound Commands**: Support WebSocket commands from the companion app to trigger playback actions (`Play`, `Pause`, `PlayPause`, `Next`, `Previous`, `Seek`, `Volume`).
-- **Architectural Isolation**: Keep D-Bus dependencies strictly decoupled from the core daemon loop to guarantee cross-compilation and execution stability even on systems without D-Bus.
-- *Status*: Detailed architectural design, message protocol, and WebSocket JSON schemas have been fully specified and approved. Implementation is currently scheduled for the next phase.
-
-### 2. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
+### 1. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
 Integrate with the Linux host's D-Bus session bus to correlate system-assigned notification IDs and allow the companion Android app to trigger action buttons (e.g. Reply, Dismiss, Custom actions) on intercepted notifications and close them remotely.
 - **Outbound Stream**: Intercept both method calls and method returns of desktop notifications, correlate their properties using call/reply serial numbers, and push events complete with unique notification IDs and action options.
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

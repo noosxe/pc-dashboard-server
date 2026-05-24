@@ -13,6 +13,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
 	"github.com/noosxe/pc-dashboard-server/pkg/daemon"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
+	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
 	"github.com/spf13/cobra"
 )
@@ -125,12 +126,27 @@ and loopback WebSocket streaming server.`,
 			}
 		}
 
-		// 6. Setup termination context
+		// 6. Resolve MPRIS provider based on emulation flags
+		var mm mpris.MPRISManager
+		if emulateMetrics {
+			cliLogger.Info("Mock MPRIS Mode enabled (Emulation Mode): Using MockMPRISManager")
+			mm = mpris.NewMockMPRISManager(logger.With("module", "mpris"))
+		} else {
+			cliLogger.Info("Production MPRIS Mode enabled: Using DbusMPRISManager")
+			var err error
+			mm, err = mpris.NewDbusMPRISManager(logger.With("module", "mpris"))
+			if err != nil {
+				cliLogger.Warn("Failed to connect to D-Bus session bus for MPRIS, falling back to mock mode", "error", err)
+				mm = mpris.NewMockMPRISManager(logger.With("module", "mpris"))
+			}
+		}
+
+		// 7. Setup termination context
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// 7. Build and start daemon engine
-		engine := daemon.NewEngine(cfg, mr, ac, nm, daemonLogger, websocketLogger)
+		// 8. Build and start daemon engine
+		engine := daemon.NewEngine(cfg, mr, ac, nm, mm, daemonLogger, websocketLogger)
 		if err := engine.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				cliLogger.Error("Daemon terminated with error", "error", err)
