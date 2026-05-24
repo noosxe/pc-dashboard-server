@@ -13,17 +13,19 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
 	"github.com/noosxe/pc-dashboard-server/pkg/daemon"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
+	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
 	"github.com/spf13/cobra"
 )
 
 var (
-	configPath     string
-	emulateMetrics bool
-	mockADB        bool
-	serverPort     int
-	verbose        bool
-	logLevel       string
-	logFormat      string
+	configPath        string
+	emulateMetrics    bool
+	mockADB           bool
+	mockNotifications bool
+	serverPort        int
+	verbose           bool
+	logLevel          string
+	logFormat         string
 )
 
 // StartCmd represents the start subcommand that launches the core daemon.
@@ -108,12 +110,27 @@ and loopback WebSocket streaming server.`,
 			ac = adb.NewSocketADBClient(cfg.ADB.ServerHost, cfg.ADB.ServerPort, adbLogger)
 		}
 
-		// 5. Setup termination context
+		// 5. Resolve Notifications provider based on mock flags
+		var nm notifications.NotificationManager
+		if mockNotifications {
+			cliLogger.Info("Mock Notifications Mode enabled: Using MockNotificationManager")
+			nm = notifications.NewMockNotificationManager(logger.With("module", "notifications"))
+		} else {
+			cliLogger.Info("Production Notifications Mode enabled: Using DbusNotificationManager")
+			var err error
+			nm, err = notifications.NewDbusNotificationManager(logger.With("module", "notifications"))
+			if err != nil {
+				cliLogger.Warn("Failed to connect to D-Bus session bus, falling back to mock mode", "error", err)
+				nm = notifications.NewMockNotificationManager(logger.With("module", "notifications"))
+			}
+		}
+
+		// 6. Setup termination context
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// 6. Build and start daemon engine
-		engine := daemon.NewEngine(cfg, mr, ac, daemonLogger, websocketLogger)
+		// 7. Build and start daemon engine
+		engine := daemon.NewEngine(cfg, mr, ac, nm, daemonLogger, websocketLogger)
 		if err := engine.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				cliLogger.Error("Daemon terminated with error", "error", err)
@@ -130,6 +147,7 @@ func init() {
 	StartCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to YAML configuration file")
 	StartCmd.Flags().BoolVar(&emulateMetrics, "emulate-metrics", false, "Enable simulated sine-wave telemetry metrics")
 	StartCmd.Flags().BoolVar(&mockADB, "mock-adb", false, "Enable simulated USB connection ticks")
+	StartCmd.Flags().BoolVar(&mockNotifications, "mock-notifications", false, "Enable simulated desktop notifications sync")
 	StartCmd.Flags().IntVarP(&serverPort, "port", "p", 0, "Overriding WebSocket local port")
 	StartCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Force log level to debug")
 	StartCmd.Flags().StringVar(&logLevel, "log-level", "", "Structured logging level (debug, info, warn, error)")

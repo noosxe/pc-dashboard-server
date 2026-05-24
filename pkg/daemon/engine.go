@@ -10,6 +10,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
+	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
 	"github.com/noosxe/pc-dashboard-server/pkg/websocket"
 )
 
@@ -20,35 +21,44 @@ type TelemetryPayload struct {
 	Data      metrics.SystemMetrics `json:"data"`
 }
 
+// NotificationEventPayload outlines the outer JSON wrapper broadcasted to clients for intercepted events.
+type NotificationEventPayload struct {
+	Type      string                         `json:"type"`
+	Timestamp int64                          `json:"timestamp"`
+	Data      notifications.NotificationEvent `json:"data"`
+}
+
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
-	logger        *slog.Logger
-	cfg           *config.Config
-	metrics       metrics.MetricsReader
-	adbClient     adb.ADBClient
-	pool          *websocket.ConnectionPool
-	wsServer      *websocket.Server
-	intervalMu    sync.Mutex
-	interval      time.Duration
-	resetChan     chan time.Duration
-	activeSerials map[string]bool
-	serialsMu     sync.RWMutex
+	logger          *slog.Logger
+	cfg             *config.Config
+	metrics         metrics.MetricsReader
+	adbClient       adb.ADBClient
+	notificationMgr notifications.NotificationManager
+	pool            *websocket.ConnectionPool
+	wsServer        *websocket.Server
+	intervalMu      sync.Mutex
+	interval        time.Duration
+	resetChan       chan time.Duration
+	activeSerials   map[string]bool
+	serialsMu       sync.RWMutex
 }
 
 // NewEngine constructs a central Orchestrator.
-func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
+func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
-		logger:        daemonLogger,
-		cfg:           cfg,
-		metrics:       mr,
-		adbClient:     ac,
-		interval:      time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
-		resetChan:     make(chan time.Duration, 5),
-		activeSerials: make(map[string]bool),
+		logger:          daemonLogger,
+		cfg:             cfg,
+		metrics:         mr,
+		adbClient:       ac,
+		notificationMgr: nm,
+		interval:        time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
+		resetChan:       make(chan time.Duration, 5),
+		activeSerials:   make(map[string]bool),
 	}
 
 	// Wire callbacks into the WebSocket connection pool
-	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction)
+	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand)
 	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, websocketLogger)
 
 	return e
@@ -59,7 +69,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	gCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errChan := make(chan error, 3)
+	errChan := make(chan error, 4)
 
 	// 1. Boot WebSocket HTTP listener thread
 	go func() {
@@ -82,6 +92,14 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.runTelemetryLoop(gCtx)
 	}()
 
+	// 4. Boot Notification monitoring thread
+	go func() {
+		if err := e.runNotificationMonitor(gCtx); err != nil {
+			e.logger.Error("Notification monitor terminated", "error", err)
+			errChan <- err
+		}
+	}()
+
 	e.logger.Info("PC Dashboard core engine successfully booted")
 
 	// Wait for termination signal or errors
@@ -95,6 +113,40 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.cleanupDevices()
 		return nil
 	}
+}
+
+// runNotificationMonitor listens to intercepted desktop notifications and broadcasts them to clients.
+func (e *Engine) runNotificationMonitor(ctx context.Context) error {
+	events, err := e.notificationMgr.Start(ctx)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-events:
+			if !ok {
+				return nil
+			}
+
+			payload := NotificationEventPayload{
+				Type:      "notification_event",
+				Timestamp: time.Now().Unix(),
+				Data:      ev,
+			}
+			e.pool.Broadcast(payload)
+		}
+	}
+}
+
+// handleNotificationCommand processes triggers received from companion apps.
+func (e *Engine) handleNotificationCommand(req notifications.NotificationRequest) (uint32, error) {
+	e.logger.Info("Executing notification command via WebSocket", "summary", req.Summary)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return e.notificationMgr.SendNotification(ctx, req)
 }
 
 // runADBTracker monitors ADB connection stream and bootstraps new devices.
