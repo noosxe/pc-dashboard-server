@@ -30,6 +30,7 @@ type ConnectionPool struct {
 	onConfigChange        func(intervalMs int)
 	onAction              func(command string)
 	onNotificationCommand func(notifications.NotificationRequest) (uint32, error)
+	onMediaCommand        func(playerName string, command string, args map[string]interface{}) error
 }
 
 // NewConnectionPool instantiates an active client pool.
@@ -38,6 +39,7 @@ func NewConnectionPool(
 	onConfigChange func(intervalMs int),
 	onAction func(command string),
 	onNotificationCommand func(notifications.NotificationRequest) (uint32, error),
+	onMediaCommand func(playerName string, command string, args map[string]interface{}) error,
 ) *ConnectionPool {
 	return &ConnectionPool{
 		logger:                logger,
@@ -45,6 +47,7 @@ func NewConnectionPool(
 		onConfigChange:        onConfigChange,
 		onAction:              onAction,
 		onNotificationCommand: onNotificationCommand,
+		onMediaCommand:        onMediaCommand,
 	}
 }
 
@@ -85,6 +88,14 @@ func (p *ConnectionPool) Broadcast(message interface{}) {
 	}
 }
 
+// MediaCommandArgs represents parameters for a media command.
+type MediaCommandArgs struct {
+	OffsetMicroseconds   *int64   `json:"offset_microseconds,omitempty"`
+	PositionMicroseconds *int64   `json:"position_microseconds,omitempty"`
+	TrackID              *string  `json:"track_id,omitempty"`
+	Volume               *float64 `json:"volume,omitempty"`
+}
+
 // InboundMessage outlines the base schema for all client requests.
 type InboundMessage struct {
 	Type     string           `json:"type"`
@@ -100,6 +111,10 @@ type InboundMessage struct {
 	Actions       []string               `json:"actions"`
 	Hints         map[string]interface{} `json:"hints"`
 	ExpireTimeout int32                  `json:"expire_timeout"`
+
+	// Media control fields
+	PlayerName string            `json:"player_name,omitempty"`
+	Args       *MediaCommandArgs `json:"args,omitempty"`
 }
 
 // ElementSettings outlines configuration update payloads.
@@ -182,6 +197,39 @@ func (p *ConnectionPool) HandleClient(wsConn *websocket.Conn) {
 						"type":   "notification_response",
 						"status": "success",
 						"id":     id,
+					})
+				}
+			}
+		case "media_command":
+			if p.onMediaCommand != nil {
+				argsMap := make(map[string]interface{})
+				if inbound.Args != nil {
+					if inbound.Args.OffsetMicroseconds != nil {
+						argsMap["offset_microseconds"] = *inbound.Args.OffsetMicroseconds
+					}
+					if inbound.Args.PositionMicroseconds != nil {
+						argsMap["position_microseconds"] = *inbound.Args.PositionMicroseconds
+					}
+					if inbound.Args.TrackID != nil {
+						argsMap["track_id"] = *inbound.Args.TrackID
+					}
+					if inbound.Args.Volume != nil {
+						argsMap["volume"] = *inbound.Args.Volume
+					}
+				}
+
+				err := p.onMediaCommand(inbound.PlayerName, inbound.Command, argsMap)
+				if err != nil {
+					p.logger.Error("Failed to execute media command", "error", err)
+					_ = client.WriteJSON(map[string]interface{}{
+						"type":   "media_response",
+						"status": "error",
+						"error":  err.Error(),
+					})
+				} else {
+					_ = client.WriteJSON(map[string]interface{}{
+						"type":   "media_response",
+						"status": "success",
 					})
 				}
 			}
