@@ -25,6 +25,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🔒 Session Lock/Unlock Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients upon connection, and dispatches real-time WebSocket updates, enabling companion Android app sleep states during host locks.
+- **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
 - **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms and mock MPRIS media controls), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
@@ -93,6 +94,7 @@ The server exposes the `start` subcommand to boot the daemon along with several 
 #### Subcommands
 
 - `start`: Launches the telemetry aggregation engine, USB auto-discovery socket, and the loopback WebSocket server.
+- `trigger`: Connects to the active background daemon via a local Unix socket to trigger various simulated events (e.g. lock/unlock transitions, notification alerts, media play states, or raw custom JSON) down the WebSocket pipe to active companion devices, receiving execution confirmations immediately.
 
 #### Flags for `start`
 
@@ -111,6 +113,28 @@ The server exposes the `start` subcommand to boot the daemon along with several 
 *Example (Emulation/Mock Mode for Sandbox Testing):*
 ```bash
 pc-dashboard-server start --emulate-metrics --mock-adb --verbose
+```
+
+#### Trigger Subcommands
+
+The `trigger` command supports several event category subcommands with dedicated parameters:
+
+*   `lock` / `unlock`: Simulates screen locking/unlocking.
+*   `notification`: Dispatches standard mock desktop notifications. Supporting flags: `--summary`, `--body`, `--app-name`, `--icon`, `--timeout`.
+*   `media`: Dispatches player updates. Supporting flags: `--player`, `--status` (Playing/Paused), `--title`, `--artist`, `--volume`, `--position`, `--length`.
+*   `telemetry`: Dispatches metrics reports. Supporting flags: `--cpu-usage`, `--cpu-temp`, `--ram-used`, `--ram-total`, `--gpu-usage`, `--gpu-temp`.
+*   `raw`: Dispatches arbitrary passthrough payloads. Supporting flags: `--type` (`-t`), `--data` (`-d`) carrying valid JSON.
+
+*Examples:*
+```bash
+# Trigger a session lock screen
+pc-dashboard-server trigger lock
+
+# Trigger a custom notification toast
+pc-dashboard-server trigger notification --summary "Antigravity Alert" --body "Everything is operating correctly"
+
+# Trigger a raw custom payload
+pc-dashboard-server trigger raw -t custom_sensor -d '{"utilization": 85.5}'
 ```
 
 ---
@@ -277,11 +301,7 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. 🔌 Local Command Socket Trigger 🟡 *[Design Phase]*
-Implement a local Unix Domain Socket (UDS) command listener on the daemon and a CLI `trigger` subcommand on the binary. This allows users and test tools to connect to the active background daemon and trigger simulated events (e.g. lock/unlock transitions, notification alerts, media play states, or raw custom JSON) down the WebSocket pipe to active companion devices, receiving execution confirmations immediately.
-- *Status*: Detailed architecture, protocol specifications, and CLI subcommand layouts have been designed. Awaiting review and approval.
-
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

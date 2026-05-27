@@ -16,6 +16,14 @@ import (
 
 // DefaultConfig provides compile-time fallback settings.
 func DefaultConfig() Config {
+	var socketPath string
+	xdgRuntime := os.Getenv("XDG_RUNTIME_DIR")
+	if xdgRuntime != "" {
+		socketPath = filepath.Join(xdgRuntime, "pc-dashboard-server.sock")
+	} else {
+		socketPath = filepath.Join(os.TempDir(), "pc-dashboard-server.sock")
+	}
+
 	return Config{
 		Server: ServerConfig{
 			Host: "127.0.0.1",
@@ -25,6 +33,7 @@ func DefaultConfig() Config {
 			UpdateIntervalMS: 1000,
 			LogLevel:         "info",
 			LogFormat:        "text",
+			SocketPath:       socketPath,
 		},
 		ADB: ADBConfig{
 			ServerHost:     "127.0.0.1",
