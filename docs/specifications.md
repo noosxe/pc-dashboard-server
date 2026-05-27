@@ -328,6 +328,28 @@ Since multiple signals (e.g. systemd-logind `Lock` and GNOME Screensaver `Active
 
 ---
 
+### 3.9. Local Command Trigger Socket (Unix Domain Socket)
+The PC Dashboard Server features a local Unix Domain Socket (UDS) command listener that allows CLI triggers to execute and relay state notifications to active WebSocket clients. This allows simulating and debugging companion application behaviors (e.g. rendering specific telemetry limits, desktop notification popups, session lock screens, or custom JSON formats) without having physical hardware access.
+
+#### A. Socket Lifecycle & Binding
+1. **Dynamic Runtime Resolution**: The socket binds to the local system path specified in the configuration. The default path resolves to `$XDG_RUNTIME_DIR/pc-dashboard-server.sock` (XDG-compliant user-specific runtime directory). If `$XDG_RUNTIME_DIR` is empty or missing, it falls back to the system temporary directory: `os.TempDir() + "/pc-dashboard-server.sock"`.
+2. **Instance Exclusivity & Cleanup**: 
+   - Upon startup, the daemon attempts to dial the existing socket file. If the dial succeeds, it indicates another daemon instance is already active, and the daemon exits with an error.
+   - If the dial fails, the socket file is considered stale, deleted via `os.Remove`, and a new UDS listener is bound.
+   - On clean engine shutdown, the socket file is unlinked (`os.Remove`) from the filesystem.
+
+#### B. Command Socket Protocol
+The client and server communicate using structured JSON over the Unix Domain Socket connection.
+1. **Inbound UDS Request**: The client transmits a single UDSRequest:
+   - `type` (string): The category of trigger (`session_lock`, `notification_event`, `media_state`, `telemetry`, `raw`).
+   - `data` (RawMessage): The corresponding JSON data object.
+2. **Outbound UDS Response**: The server processes the request, broadcasts the payload to all active WebSocket clients, and returns a single UDSResponse:
+   - `success` (boolean): Whether the event was successfully processed and broadcasted.
+   - `client_count` (int): The number of active clients the event was routed to.
+   - `error` (string): An optional error description if the operation failed.
+
+---
+
 ## 4. Security Model & Guidelines
 
 To ensure maximum safety and protect the user's host machine, the daemon adheres to the following secure coding principles:
@@ -341,3 +363,4 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 7.  **D-Bus Bound Validation**: Media player commands (such as Seek relative offsets and absolute Position microseconds) received via WebSockets must be validated for boundaries (e.g., negative length bounds, reasonable maximum volume float limits between `0.0` and `1.0`) before routing them to the host's D-Bus bus. This blocks malicious or erroneous WebSocket frames from sending out-of-range or malformed values to system applications.
 8.  **Notification Safety Boundaries**: Notification summary and body fields received via WebSockets will be subject to strict length limitations (e.g., maximum 512 bytes for summary, 2048 bytes for body) and simple markup validation (stripping dangerous or invalid HTML elements) to prevent injection exploits in the host's notification daemon. The `Hints` dictionary must be restricted to verified safe primitive keys (e.g., `urgency`, `category`) to block serialization issues.
 9.  **Lock State Isolation**: The outbound session lock status must only convey a simple binary status (`locked`: boolean). No active session names, user IDs, or environment details may ever be sent to the companion app, protecting user session privacy from physical/network exposure.
+10. **Unix Domain Socket Isolation & Access Control**: The UDS listener restricts socket file permissions strictly to owner-only access (`0600` or `0700` directories) to prevent multi-user system privilege escalation or unauthorized local telemetry injections. All incoming payload keys are strictly unmarshalled and validated against strict schemas, blocking memory injection or structural corruption before distribution.

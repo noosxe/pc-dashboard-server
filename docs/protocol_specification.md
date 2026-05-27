@@ -561,3 +561,133 @@ This is an event-driven payload pushed asynchronously by the daemon whenever the
 1.  **Heartbeat Timeout**: The daemon maintains a read timeout of **5 seconds** for WebSocket connections. If no telemetry frame acknowledgement or `ping` is received within 5 seconds, the WebSocket connection is dropped.
 2.  **Resource Cleanup**: Upon WebSocket disconnection, the daemon tears down the device-specific reverse tunnel mapping (`adb reverse --remove tcp:12345`) to prevent stale system port states.
 3.  **USB Reconnect**: If the device is unplugged and reattached, the `track-devices` socket triggers a new `online` flow, initiating the full ADB handshake sequence from Step 1.
+
+---
+
+## 5. Local Command UDS Socket Protocol Specification
+
+To support local manual triggering of client-bound state updates, the daemon exposes a Unix Domain Socket (UDS) interface. Command clients connect, transmit trigger packets, and block awaiting process execution response before closing the channel.
+
+### 5.1. Socket Connection Parameters
+*   **Protocol**: Unix Domain Socket (`unix`)
+*   **Path**: `$XDG_RUNTIME_DIR/pc-dashboard-server.sock` (Default) or configuration-overridden path.
+*   **Timeout**: 3 seconds dial / write timeout.
+
+---
+
+### 5.2. Inbound UDS Trigger Request (`UDSRequest`)
+Command clients transmit a single JSON object frame upon successful socket dial.
+
+#### JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UDSRequest",
+  "type": "object",
+  "required": ["type", "data"],
+  "properties": {
+    "type": { 
+      "type": "string", 
+      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "raw"] 
+    },
+    "data": { 
+      "type": "object",
+      "description": "Inner event data matching corresponding WebSocket outbound payload interfaces"
+    }
+  }
+}
+```
+
+#### Supported Types & Payload Formats
+
+##### A. `session_lock` (Lock/Unlock Event)
+Triggers session lock/unlock updates.
+*   **Request Data Schema**:
+    ```json
+    {
+      "locked": true
+    }
+    ```
+*   **Daemon Action**: Wraps under `SessionLockPayload` (attaching current server timestamp) and broadcasts to all WebSocket clients.
+
+##### B. `notification_event` (Intercepted Notification Event)
+Triggers mock notifications on the companion app.
+*   **Request Data Schema**:
+    ```json
+    {
+      "id": 1042,
+      "app_name": "Slack",
+      "replaces_id": 0,
+      "app_icon": "slack",
+      "summary": "Title of message",
+      "body": "Body of notification message",
+      "actions": ["default", "Open", "dismiss", "Dismiss"],
+      "hints": {},
+      "expire_timeout": 5000
+    }
+    ```
+*   **Daemon Action**: Wraps under `NotificationEventPayload` (attaching timestamp) and broadcasts.
+
+##### C. `media_state` (MPRIS State Event)
+Triggers custom media states (rotating track information, playback state toggles, progress updates).
+*   **Request Data Schema**: See MPRIS PlayerState schema defined in `3.3 Outbound Media State Payload`.
+*   **Daemon Action**: Wraps under `MediaStatePayload` and broadcasts.
+
+##### D. `telemetry` (System Telemetry Event)
+Triggers CPU/RAM/GPU telemetry metrics update.
+*   **Request Data Schema**: See SystemMetrics schema defined in `3.1 Outbound Telemetry Payload`.
+*   **Daemon Action**: Wraps under `TelemetryPayload` and broadcasts.
+
+##### E. `raw` (Arbitrary Passthrough Payload)
+Directly relays custom JSON types to WebSockets without daemon verification.
+*   **Request Format**:
+    ```json
+    {
+      "type": "raw",
+      "data": {
+        "type": "my_custom_client_payload",
+        "custom_key": "custom_value"
+      }
+    }
+    ```
+*   **Daemon Action**: Directly serializes and broadcasts `data` as a raw WebSocket UTF-8 text frame.
+
+---
+
+### 5.3. Outbound UDS Processing Response (`UDSResponse`)
+The daemon processes the trigger request, attempts WebSocket distribution, and returns a confirmation JSON frame back before unlinking the connection.
+
+#### JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UDSResponse",
+  "type": "object",
+  "required": ["success", "client_count"],
+  "properties": {
+    "success": { "type": "boolean" },
+    "client_count": { "type": "integer", "minimum": 0, "description": "Number of active clients that received the event" },
+    "error": { "type": "string", "description": "Error details if success is false" }
+  }
+}
+```
+
+#### JSON Payload Examples
+
+*   **Success Response**:
+    ```json
+    {
+      "success": true,
+      "client_count": 1
+    }
+    ```
+
+*   **Failure (Invalid Schema)**:
+    ```json
+    {
+      "success": false,
+      "client_count": 0,
+      "error": "failed to decode inner trigger data: json: cannot unmarshal string into Go struct"
+    }
+    ```
+
