@@ -332,7 +332,8 @@ To enforce strict boundary segregation, testability, and swappability, the Go da
 pc-dashboard-server/
 ├── cmd/                          # Command-Line Interfaces (Cobra-based)
 │   ├── root.go                   # Root Command router
-│   └── start.go                  # Bootstrap command: loads configuration and boots modules
+│   ├── start.go                  # Bootstrap command: loads configuration and boots modules
+│   └── trigger.go                # Command trigger client: relays events to UDS
 ├── pkg/
 │   ├── config/                   # Configuration management module
 │   │   ├── config.go             # Strongly-typed configuration structures
@@ -354,14 +355,15 @@ pc-dashboard-server/
 │   │   ├── dbus_manager.go       # Production NotificationManager (native D-Bus:session)
 │   │   └── mock_manager.go       # Simulated notification event generator
 │   ├── lock/                     # Session Lock & Screensaver monitoring module
-│   │   ├── lock.go               # LockManager interface & event models
+				│   │   ├── lock.go               # LockManager interface & event models
 │   │   ├── dbus_manager.go       # Production LockManager (Session & System D-Bus)
 │   │   └── mock_manager.go       # Simulated session lock event generator
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
 │   └── daemon/                   # Daemon orchestrator and runtime coordinator module
-│       └── engine.go             # Core daemon loop coupling ADB, Metrics, and WebSockets
+│       ├── engine.go             # Core daemon loop coupling ADB, Metrics, and WebSockets
+│       └── command_listener.go   # Unix Domain Socket local command trigger server
 └── main.go                       # Minimal application entry point
 ```
 
@@ -373,6 +375,10 @@ pc-dashboard-server/
 4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, and `LockManager` event channels, pushing `media_state`, `notification_event`, and `session_lock` updates to the WebSocket broadcaster as they arrive.
    - **Session Lock State Caching**: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
 5. **Command Ingestion Phase**: WebSocket clients send `notification_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager.SendNotification` to trigger native D-Bus toasts on the host desktop.
+6. **Local Command Socket Triggering**: 
+   - When the daemon starts, the `pkg/daemon` engine starts the `command_listener` goroutine which binds to a local Unix Domain Socket (default `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
+   - The CLI `cmd/trigger.go` command runs as a separate process invocation. It validates the user's requested trigger (lock, unlock, notification, etc.), constructs a structured `UDSRequest`, dials the Unix socket, and transmits the payload.
+   - The `command_listener` reads this request, validates the type/schema, retrieves the current connection pool status to report active WebSocket client count, broadcasts the payload to all active WebSocket clients, and writes back a `UDSResponse` containing success state and routed client count.
 
 
 ---
@@ -382,6 +388,8 @@ pc-dashboard-server/
 *   **Secure Dependency Verification**: Every library will be checked to confirm it contains zero known CVEs (Common Vulnerabilities and Exposures) prior to final inclusion.
 *   **Local TCP Boundary**:
     WebSocket routes are restricted to the local loopback (`127.0.0.1`). Physical access via a USB connection (secured via ADB client authentication keys on the host machine) is the single path of access to the WebSocket port, keeping the surface area completely isolated.
+*   **Unix Domain Socket Security Bounds**:
+    The command trigger socket binds inside the user-owned runtime directory (default `$XDG_RUNTIME_DIR`), which restricts filesystem access to the current active user (`0700` parent permissions). The socket file itself is created with owner-only access. The daemon validates each incoming event type and schema before broadcasting, blocking un-sanitized or malformed messages from traversing the local WebSocket pool.
 
 ---
 
