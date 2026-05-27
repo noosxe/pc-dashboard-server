@@ -31,6 +31,7 @@ type ConnectionPool struct {
 	onAction              func(command string)
 	onNotificationCommand func(notifications.NotificationRequest) (uint32, error)
 	onMediaCommand        func(playerName string, command string, args map[string]interface{}) error
+	onConnect             func(conn *ClientConn)
 }
 
 // NewConnectionPool instantiates an active client pool.
@@ -40,6 +41,7 @@ func NewConnectionPool(
 	onAction func(command string),
 	onNotificationCommand func(notifications.NotificationRequest) (uint32, error),
 	onMediaCommand func(playerName string, command string, args map[string]interface{}) error,
+	onConnect func(conn *ClientConn),
 ) *ConnectionPool {
 	return &ConnectionPool{
 		logger:                logger,
@@ -48,15 +50,20 @@ func NewConnectionPool(
 		onAction:              onAction,
 		onNotificationCommand: onNotificationCommand,
 		onMediaCommand:        onMediaCommand,
+		onConnect:             onConnect,
 	}
 }
 
 // Add inserts a wrapper connection into the registry.
 func (p *ConnectionPool) Add(conn *ClientConn) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.connections[conn] = true
 	p.logger.Info("Client connected", "active_clients", len(p.connections))
+	p.mu.Unlock()
+
+	if p.onConnect != nil {
+		p.onConnect(conn)
+	}
 }
 
 // Remove deletes a client from the registry and closes it.
