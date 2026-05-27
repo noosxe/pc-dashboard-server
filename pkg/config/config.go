@@ -11,6 +11,7 @@ type DaemonConfig struct {
 	UpdateIntervalMS int    `koanf:"update_interval_ms"`
 	LogLevel         string `koanf:"log_level"`
 	LogFormat        string `koanf:"log_format"`
+	SocketPath       string `koanf:"socket_path"`
 }
 
 // ADBConfig holds target settings to connect and bootstrap Android devices.

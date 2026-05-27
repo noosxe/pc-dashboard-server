@@ -138,6 +138,14 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 	}()
 
+	// 7. Boot Local UDS Command Socket listener thread
+	go func() {
+		if err := e.runCommandSocket(gCtx); err != nil {
+			e.logger.Error("Local command socket listener terminated with error", "error", err)
+			errChan <- err
+		}
+	}()
+
 	e.logger.Info("PC Dashboard core engine successfully booted")
 
 	// Wait for termination signal or errors

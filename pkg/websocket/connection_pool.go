@@ -77,6 +77,13 @@ func (p *ConnectionPool) Remove(conn *ClientConn) {
 	}
 }
 
+// Size returns the count of active client connections in the pool.
+func (p *ConnectionPool) Size() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return len(p.connections)
+}
+
 // Broadcast sends a message to all connected clients.
 func (p *ConnectionPool) Broadcast(message interface{}) {
 	p.mu.RLock()
