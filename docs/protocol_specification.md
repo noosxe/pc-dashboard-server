@@ -486,7 +486,8 @@ The companion app can transmit this command to explicitly close/dismiss a notifi
 ---
 
 ### 3.9. Outbound Session Lock Payload (Host → Android Client)
-This is an event-driven payload pushed asynchronously by the daemon whenever the host PC user session is locked or unlocked. This is used by the Android companion app to put the device screen into low-power sleeping mode after a configured timeout.
+This is an event-driven payload pushed asynchronously by the daemon whenever the host PC user session is locked or unlocked. Additionally, to establish immediate synchronization, this payload is sent to newly connected WebSocket clients immediately after a successful connection handshake, transmitting the current cached lock/unlock status of the host machine. This is used by the Android companion app to put the device screen into low-power sleeping mode after a configured timeout.
+
 
 #### JSON Schema Spec
 ```json

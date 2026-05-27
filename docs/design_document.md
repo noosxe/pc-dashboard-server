@@ -371,7 +371,9 @@ pc-dashboard-server/
 2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
 4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, and `LockManager` event channels, pushing `media_state`, `notification_event`, and `session_lock` updates to the WebSocket broadcaster as they arrive.
+   - **Session Lock State Caching**: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
 5. **Command Ingestion Phase**: WebSocket clients send `notification_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager.SendNotification` to trigger native D-Bus toasts on the host desktop.
+
 
 ---
 
