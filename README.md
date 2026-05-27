@@ -281,6 +281,10 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
+### 3. 🔒 Session Lock State Caching 🟡 *[Design Phase]*
+Cache the last known session lock/unlock state in the central daemon orchestrator memory. When a new client establishes a WebSocket connection, immediately push the cached lock state to synchronize the client state without waiting for a new D-Bus lock/unlock signal.
+- *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
+
 ---
 
 ## 💻 Development & Contributing
