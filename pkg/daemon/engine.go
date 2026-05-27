@@ -60,6 +60,8 @@ type Engine struct {
 	resetChan       chan time.Duration
 	activeSerials   map[string]bool
 	serialsMu       sync.RWMutex
+	lockStateMu     sync.RWMutex
+	lastLockState   *lock.SessionLockEvent
 }
 
 // NewEngine constructs a central Orchestrator.
@@ -78,7 +80,7 @@ func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, n
 	}
 
 	// Wire callbacks into the WebSocket connection pool
-	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand, e.handleMediaCommand)
+	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand, e.handleMediaCommand, e.handleClientConnect)
 	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, websocketLogger)
 
 	return e
@@ -416,6 +418,11 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 				return nil
 			}
 
+			// Cache the last session lock event
+			e.lockStateMu.Lock()
+			e.lastLockState = &ev
+			e.lockStateMu.Unlock()
+
 			payload := SessionLockPayload{
 				Type:      "session_lock",
 				Timestamp: time.Now().Unix(),
@@ -423,6 +430,28 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 			}
 			e.pool.Broadcast(payload)
 		}
+	}
+}
+
+// handleClientConnect pushes the cached session lock state to a newly connected client.
+func (e *Engine) handleClientConnect(conn *websocket.ClientConn) {
+	e.lockStateMu.RLock()
+	state := e.lastLockState
+	e.lockStateMu.RUnlock()
+
+	if state != nil {
+		payload := SessionLockPayload{
+			Type:      "session_lock",
+			Timestamp: time.Now().Unix(),
+			Data:      *state,
+		}
+		if err := conn.WriteJSON(payload); err != nil {
+			e.logger.Error("Failed to send initial session lock state to client", "error", err)
+		} else {
+			e.logger.Info("Sent initial session lock state to client", "locked", state.Locked)
+		}
+	} else {
+		e.logger.Debug("No initial session lock state cached, skipping push")
 	}
 }
 
