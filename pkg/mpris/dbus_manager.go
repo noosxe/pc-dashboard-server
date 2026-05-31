@@ -320,6 +320,7 @@ func (m *DbusMPRISManager) fetchAndRegisterPlayer(serviceName, owner string) {
 
 // handleDbusSignal routes and parses D-Bus event frames.
 func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
+	m.logger.Debug("Received D-Bus signal in MPRIS manager", "sender", sig.Sender, "path", sig.Path, "name", sig.Name, "body", sig.Body)
 	switch sig.Name {
 	case "org.freedesktop.DBus.NameOwnerChanged":
 		if len(sig.Body) < 3 {
@@ -375,18 +376,21 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 			if s, ok := val.Value().(string); ok {
 				player.PlaybackStatus = PlaybackStatus(s)
 				updated = true
+				m.logger.Debug("MPRIS player PlaybackStatus changed", "player", player.PlayerName, "status", s)
 			}
 		}
 		if val, ok := changedProps["Volume"]; ok {
 			if v, ok := val.Value().(float64); ok {
 				player.Volume = v
 				updated = true
+				m.logger.Debug("MPRIS player Volume changed", "player", player.PlayerName, "volume", v)
 			}
 		}
 		if val, ok := changedProps["Metadata"]; ok {
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
 				player.Metadata = parseMetadata(rawMeta)
 				updated = true
+				m.logger.Debug("MPRIS player Metadata changed", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
 			}
 		}
 		m.mu.Unlock()

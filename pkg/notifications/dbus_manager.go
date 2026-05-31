@@ -71,6 +71,7 @@ func (m *DbusNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 				if !ok {
 					return
 				}
+				m.logger.Debug("Received D-Bus message in Notifications manager", "type", msg.Type, "headers", msg.Headers, "body_len", len(msg.Body))
 				if len(msg.Body) < 8 {
 					continue
 				}
@@ -83,6 +84,13 @@ func (m *DbusNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 				actions, _ := msg.Body[5].([]string)
 				hintsRaw, _ := msg.Body[6].(map[string]dbus.Variant)
 				expireTimeout, _ := msg.Body[7].(int32)
+
+				m.logger.Debug("Parsed notification from D-Bus",
+					"app_name", appName,
+					"replaces_id", replacesId,
+					"summary", summary,
+					"body", body,
+				)
 
 				hints := make(map[string]interface{})
 				for k, v := range hintsRaw {
