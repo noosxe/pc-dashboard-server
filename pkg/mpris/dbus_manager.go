@@ -40,14 +40,21 @@ func NewDbusMPRISManager(logger *slog.Logger) (*DbusMPRISManager, error) {
 // Start begins dynamic D-Bus session eavesdropping for media players.
 func (m *DbusMPRISManager) Start(ctx context.Context) (<-chan MediaEvent, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if m.started {
+		m.mu.Unlock()
 		return m.eventsChan, nil
 	}
 
+	m.eventsChan = make(chan MediaEvent, 50)
+	m.started = true
+	m.mu.Unlock()
+
 	monitorConn, err := dbus.ConnectSessionBus()
 	if err != nil {
+		m.mu.Lock()
+		m.started = false
+		m.eventsChan = nil
+		m.mu.Unlock()
 		return nil, fmt.Errorf("failed to connect to session bus for MPRIS monitoring: %w", err)
 	}
 
@@ -56,22 +63,27 @@ func (m *DbusMPRISManager) Start(ctx context.Context) (<-chan MediaEvent, error)
 	err = obj.Call("org.freedesktop.DBus.AddMatch", 0, "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged'").Err
 	if err != nil {
 		monitorConn.Close()
+		m.mu.Lock()
+		m.started = false
+		m.eventsChan = nil
+		m.mu.Unlock()
 		return nil, fmt.Errorf("failed to add NameOwnerChanged match signal: %w", err)
 	}
 
 	err = obj.Call("org.freedesktop.DBus.AddMatch", 0, "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/mpris/MediaPlayer2'").Err
 	if err != nil {
 		monitorConn.Close()
+		m.mu.Lock()
+		m.started = false
+		m.eventsChan = nil
+		m.mu.Unlock()
 		return nil, fmt.Errorf("failed to add PropertiesChanged match signal: %w", err)
 	}
 
 	ch := make(chan *dbus.Signal, 100)
 	monitorConn.Signal(ch)
 
-	m.eventsChan = make(chan MediaEvent, 50)
-	m.started = true
-
-	// Bootstrap currently active players
+	// Bootstrap currently active players (runs safely now since m.mu is unlocked)
 	m.bootstrapActivePlayers()
 
 	m.logger.Info("D-Bus MPRIS player monitoring successfully initialized")
