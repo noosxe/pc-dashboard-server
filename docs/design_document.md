@@ -225,7 +225,9 @@ type PlayerMetadata struct {
 
 // PlayerState represents the complete state of a media player.
 type PlayerState struct {
-    PlayerName     string         `json:"player_name"` // e.g. "spotify", "vlc"
+    PlayerName     string         `json:"player_name"`     // D-Bus service suffix (e.g. "firefox.instance_1_63")
+    Identity       string         `json:"identity"`        // User-friendly name (e.g. "Mozilla zen")
+    DesktopEntry   string         `json:"desktop_entry"`   // Desktop entry name (e.g. "zen")
     PlaybackStatus PlaybackStatus `json:"playback_status"`
     Volume         float64        `json:"volume"`             // 0.0 to 1.0
     PositionMicro  int64          `json:"position_microseconds"` // current playback position
@@ -249,6 +251,10 @@ type MPRISManager interface {
 
 *   **Implementations**:
     1.  `DbusMPRISManager`: Production client communicating directly over D-Bus Session sockets using `godbus`.
+        - **Tiered Name Resolution Engine**: To resolve user-friendly names (e.g. `"Mozilla zen"`) instead of raw service suffixes (e.g. `"firefox.instance_1_63"`), the production manager implements a multi-tier resolution process:
+          - *Tier 1: MPRIS Identity Property*: Fetches `org.mpris.MediaPlayer2.Identity` directly from the D-Bus object path `/org/mpris/MediaPlayer2`.
+          - *Tier 2: MPRIS DesktopEntry Property*: Fetches `org.mpris.MediaPlayer2.DesktopEntry` (e.g. `"zen"`), then scans standard XDG applications directories (`$XDG_DATA_DIRS/applications/` and `~/.local/share/applications/`) to parse `[desktopEntry].desktop` and read its user-facing `Name=` field.
+          - *Tier 3: PID Executable Resolution*: Queries D-Bus connection Unix Process ID (`org.freedesktop.DBus.GetConnectionUnixProcessID`), reads `/proc/<pid>/exe` to extract the binary basename (e.g. `"zen"`), and uses it to find/parse corresponding `.desktop` entries.
     2.  `MockMPRISManager`: Simulation client that generates fluctuating player progress and rotates song metadata for local emulation.
 
 ### 4.4. Notification Manager Interface (`NotificationManager`)
