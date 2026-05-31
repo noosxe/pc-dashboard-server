@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -120,6 +121,7 @@ func (m *manualLockManager) Start(ctx context.Context) (<-chan lock.SessionLockE
 }
 
 type trackingADBClient struct {
+	mu           sync.Mutex
 	wakeCalled   bool
 	sleepCalled  bool
 	launchCalled bool
@@ -133,20 +135,54 @@ func (c *trackingADBClient) ReversePort(ctx context.Context, serial string, loca
 	return nil
 }
 func (c *trackingADBClient) LaunchApp(ctx context.Context, serial string, pkg, activity string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.launchCalled = true
 	return nil
 }
 func (c *trackingADBClient) WakeDevice(ctx context.Context, serial string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.wakeCalled = true
 	return nil
 }
 func (c *trackingADBClient) SleepDevice(ctx context.Context, serial string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.sleepCalled = true
 	return nil
 }
 func (c *trackingADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.closeCalled = true
 	return nil
+}
+
+func (c *trackingADBClient) getWakeCalled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.wakeCalled
+}
+func (c *trackingADBClient) getSleepCalled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sleepCalled
+}
+func (c *trackingADBClient) getLaunchCalled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.launchCalled
+}
+func (c *trackingADBClient) getCloseCalled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closeCalled
+}
+func (c *trackingADBClient) resetWakeCalled() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.wakeCalled = false
 }
 
 func TestEngine_NoAppControl(t *testing.T) {
@@ -161,10 +197,10 @@ func TestEngine_NoAppControl(t *testing.T) {
 	// Trigger bootstrapDevice
 	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
 
-	if ac.wakeCalled {
+	if ac.getWakeCalled() {
 		t.Error("expected WakeDevice NOT to be called when NoAppControl is true")
 	}
-	if ac.launchCalled {
+	if ac.getLaunchCalled() {
 		t.Error("expected LaunchApp NOT to be called when NoAppControl is true")
 	}
 
@@ -172,7 +208,7 @@ func TestEngine_NoAppControl(t *testing.T) {
 	engine.activeSerials["TEST_SERIAL"] = true
 	engine.cleanupDevices()
 
-	if ac.closeCalled {
+	if ac.getCloseCalled() {
 		t.Error("expected CloseApp NOT to be called when NoAppControl is true")
 	}
 }
@@ -189,10 +225,10 @@ func TestEngine_AppControlEnabled(t *testing.T) {
 	// Trigger bootstrapDevice
 	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
 
-	if !ac.wakeCalled {
+	if !ac.getWakeCalled() {
 		t.Error("expected WakeDevice to be called when NoAppControl is false")
 	}
-	if !ac.launchCalled {
+	if !ac.getLaunchCalled() {
 		t.Error("expected LaunchApp to be called when NoAppControl is false")
 	}
 
@@ -200,7 +236,7 @@ func TestEngine_AppControlEnabled(t *testing.T) {
 	engine.activeSerials["TEST_SERIAL"] = true
 	engine.cleanupDevices()
 
-	if !ac.closeCalled {
+	if !ac.getCloseCalled() {
 		t.Error("expected CloseApp to be called when NoAppControl is false")
 	}
 }
@@ -232,16 +268,16 @@ func TestEngine_LockUnlockTriggersAdb(t *testing.T) {
 	// Wait brief moment for goroutine
 	time.Sleep(50 * time.Millisecond)
 
-	if !ac.sleepCalled {
+	if !ac.getSleepCalled() {
 		t.Error("expected SleepDevice to be called on session lock")
 	}
 
 	// 2. Send Unlock event -> Screen Wake
-	ac.wakeCalled = false // reset flag
+	ac.resetWakeCalled() // reset flag
 	lockEvents <- lock.SessionLockEvent{Locked: false}
 	time.Sleep(50 * time.Millisecond)
 
-	if !ac.wakeCalled {
+	if !ac.getWakeCalled() {
 		t.Error("expected WakeDevice to be called on session unlock")
 	}
 }
@@ -272,7 +308,7 @@ func TestEngine_LockUnlockNoAppControl(t *testing.T) {
 	lockEvents <- lock.SessionLockEvent{Locked: true}
 	time.Sleep(50 * time.Millisecond)
 
-	if ac.sleepCalled {
+	if ac.getSleepCalled() {
 		t.Error("expected SleepDevice NOT to be called on session lock when NoAppControl is true")
 	}
 
@@ -280,7 +316,7 @@ func TestEngine_LockUnlockNoAppControl(t *testing.T) {
 	lockEvents <- lock.SessionLockEvent{Locked: false}
 	time.Sleep(50 * time.Millisecond)
 
-	if ac.wakeCalled {
+	if ac.getWakeCalled() {
 		t.Error("expected WakeDevice NOT to be called on session unlock when NoAppControl is true")
 	}
 }
