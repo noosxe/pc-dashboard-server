@@ -118,3 +118,84 @@ type manualLockManager struct {
 func (m *manualLockManager) Start(ctx context.Context) (<-chan lock.SessionLockEvent, error) {
 	return m.events, nil
 }
+
+type trackingADBClient struct {
+	wakeCalled   bool
+	launchCalled bool
+	closeCalled  bool
+}
+
+func (c *trackingADBClient) TrackDevices(ctx context.Context) (<-chan adb.DeviceEvent, error) {
+	return nil, nil
+}
+func (c *trackingADBClient) ReversePort(ctx context.Context, serial string, localPort, devicePort int) error {
+	return nil
+}
+func (c *trackingADBClient) LaunchApp(ctx context.Context, serial string, pkg, activity string) error {
+	c.launchCalled = true
+	return nil
+}
+func (c *trackingADBClient) WakeDevice(ctx context.Context, serial string) error {
+	c.wakeCalled = true
+	return nil
+}
+func (c *trackingADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
+	c.closeCalled = true
+	return nil
+}
+
+func TestEngine_NoAppControl(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	cfg := &config.Config{}
+	cfg.ADB.NoAppControl = true
+
+	ac := &trackingADBClient{}
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, logger, logger)
+
+	// Trigger bootstrapDevice
+	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
+
+	if ac.wakeCalled {
+		t.Error("expected WakeDevice NOT to be called when NoAppControl is true")
+	}
+	if ac.launchCalled {
+		t.Error("expected LaunchApp NOT to be called when NoAppControl is true")
+	}
+
+	// Trigger cleanupDevices
+	engine.activeSerials["TEST_SERIAL"] = true
+	engine.cleanupDevices()
+
+	if ac.closeCalled {
+		t.Error("expected CloseApp NOT to be called when NoAppControl is true")
+	}
+}
+
+func TestEngine_AppControlEnabled(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	cfg := &config.Config{}
+	cfg.ADB.NoAppControl = false
+
+	ac := &trackingADBClient{}
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, logger, logger)
+
+	// Trigger bootstrapDevice
+	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
+
+	if !ac.wakeCalled {
+		t.Error("expected WakeDevice to be called when NoAppControl is false")
+	}
+	if !ac.launchCalled {
+		t.Error("expected LaunchApp to be called when NoAppControl is false")
+	}
+
+	// Trigger cleanupDevices
+	engine.activeSerials["TEST_SERIAL"] = true
+	engine.cleanupDevices()
+
+	if !ac.closeCalled {
+		t.Error("expected CloseApp to be called when NoAppControl is false")
+	}
+}
