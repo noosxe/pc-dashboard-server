@@ -365,7 +365,38 @@ The companion Android app can issue real-time power profile commands back to the
 
 ---
 
-### 3.10. Local Command Trigger Socket (Unix Domain Socket)
+### 3.11. Bluetooth Device Monitoring (D-Bus / BlueZ)
+The PC Dashboard Server leverages the **D-Bus System Bus** to passively monitor host Bluetooth devices via the **BlueZ** system service (`org.bluez`). It emits real-time connect/disconnect events to the companion Android app and periodically reports battery level and signal strength (RSSI) for all currently connected Bluetooth devices. No active scanning, pairing, or device mutation is performed — the feature is entirely read-only and event-driven.
+
+#### A. Initial Device Discovery
+1. **D-Bus System Connection**: The daemon connects to the system bus (`dbus.ConnectSystemBus()`), targeting the well-known BlueZ service `org.bluez`.
+2. **Object Manager Bootstrap**: On startup, the daemon calls `org.freedesktop.DBus.ObjectManager.GetManagedObjects` on the `org.bluez` service at the root path `/`. This returns a dictionary of all managed BlueZ objects (adapters and devices). The daemon filters for entries that implement `org.bluez.Device1` and have `Connected == true` to build its initial connected-device state snapshot.
+3. **Initial Snapshot Push**: An initial `bluetooth_state` payload with `event_type: "snapshot"` is immediately sent to the WebSocket broadcaster so that all existing clients are synchronized from the first moment.
+
+#### B. Real-Time Event Monitoring
+The daemon registers the following D-Bus signal match rules to detect changes without polling:
+1. **`InterfacesAdded`** (`org.freedesktop.DBus.ObjectManager` on `org.bluez`): Fired when BlueZ adds a new device object (e.g., a previously unknown device becomes visible). If the added object includes `org.bluez.Device1` and `Connected == true`, the daemon emits a `"connected"` event.
+2. **`InterfacesRemoved`** (`org.freedesktop.DBus.ObjectManager` on `org.bluez`): Fired when BlueZ removes a device object (e.g., unpaired device pruned after inactivity). If the removed path corresponds to a known-connected device, the daemon emits a `"disconnected"` event.
+3. **`PropertiesChanged`** (`org.freedesktop.DBus.Properties` on `org.bluez.Device1`): This is the primary signal for monitoring connected/disconnected transitions on paired/bonded devices:
+   - When the `Connected` property transitions `false → true`: emit `"connected"` event.
+   - When the `Connected` property transitions `true → false`: emit `"disconnected"` event.
+   - When `RSSI` or battery-related properties change: emit `"updated"` event.
+
+#### C. Periodic Battery Level & RSSI Reporting
+For all currently connected Bluetooth devices, the daemon runs a background polling goroutine at a configurable interval (default: **30 seconds**, configurable via `bluetooth.update_interval_s`):
+1. **RSSI**: Read `RSSI` (int16, dBm) from the `org.bluez.Device1` interface via `org.freedesktop.DBus.Properties.Get`. This property may not be available for all connected devices (especially bonded devices not in active scan range); if absent, the field is omitted (`null`) from the outbound payload.
+2. **Battery Level**: Read `Percentage` (uint8, 0–100) from the `org.bluez.Battery1` interface. This interface is only exposed by devices that implement the Bluetooth Battery Service GATT profile (BAS, UUID `0x180F`) on BlueZ 5.48+. If the interface is absent, the field is omitted (`null`).
+3. **Change-Triggered Updates**: If any polled value changes relative to the previously cached state, the daemon emits an `"updated"` event for the affected device. If no values changed, no event is emitted, preventing unnecessary WebSocket traffic.
+
+#### D. WebSocket State Caching
+The daemon caches the last `bluetooth_state` payload (the full `connected_devices` list). When a new WebSocket client establishes a connection, the engine immediately pushes the cached Bluetooth state (in addition to the existing `session_lock` and `power_profile_state` caches), ensuring instant synchronization without waiting for the next device event.
+
+#### E. Graceful Degradation
+If the BlueZ service is not running (e.g., Bluetooth hardware is absent or `bluetoothd` is stopped), the `Start()` call logs a warning and returns. The daemon continues operating all other subsystems without Bluetooth monitoring — consistent with how GPU metrics handle missing hardware.
+
+---
+
+### 3.12. Local Command Trigger Socket (Unix Domain Socket)
 The PC Dashboard Server features a local Unix Domain Socket (UDS) command listener that allows CLI triggers to execute and relay state notifications to active WebSocket clients. This allows simulating and debugging companion application behaviors (e.g. rendering specific telemetry limits, desktop notification popups, session lock screens, or custom JSON formats) without having physical hardware access.
 
 #### A. Socket Lifecycle & Binding
@@ -402,3 +433,4 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 9.  **Lock State Isolation**: The outbound session lock status must only convey a simple binary status (`locked`: boolean). No active session names, user IDs, or environment details may ever be sent to the companion app, protecting user session privacy from physical/network exposure.
 10. **Unix Domain Socket Isolation & Access Control**: The UDS listener restricts socket file permissions strictly to owner-only access (`0600` or `0700` directories) to prevent multi-user system privilege escalation or unauthorized local telemetry injections. All incoming payload keys are strictly unmarshalled and validated against strict schemas, blocking memory injection or structural corruption before distribution.
 11. **Power Profile Input Sanitization**: Power profile selection commands received via WebSockets are strictly validated against the read-only list of available profiles fetched from the system D-Bus before execution. Any unrecognized strings are immediately dropped, preventing D-Bus property injection or arbitrary system parameter manipulation.
+12. **Bluetooth Passive Monitoring & Privacy**: The Bluetooth monitoring module operates in a strictly read-only, passive mode. It must never invoke state-mutating BlueZ methods (`StartDiscovery`, `Connect`, `Disconnect`, `RemoveDevice`, `Pair`, etc.) under any circumstances. Outbound `bluetooth_state` payloads are limited to display-relevant fields (`address`, `name`, `alias`, `class`, `battery_percent`, `rssi`, `connected`, `paired`, `trusted`); raw GATT UUIDs, manufacturer data, and service records are excluded to minimize hardware fingerprinting exposure. Bluetooth MAC addresses are logged only at `debug` level to prevent hardware identifier leakage in production journal output.

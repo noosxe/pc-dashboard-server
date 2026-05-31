@@ -69,9 +69,35 @@ When the `--emulate-metrics` flag is enabled, the daemon also instantiates the `
 *   **Command Responses**:
     - `power_profile_command`: Updates the in-memory active profile name if the requested profile matches one of the three available profiles, and triggers an immediate broadcast of the new `power_profile_state` payload.
 
+#### C. Bluetooth Emulation (`MockBluetoothManager`)
+When the daemon is started with the `--mock-bluetooth` flag, it activates the `MockBluetoothManager` instead of the production `DbusBluetoothManager`. This simulates a scripted sequence of Bluetooth device connect/disconnect events, oscillating RSSI values, and slowly draining battery levels — all without requiring physical Bluetooth hardware or a running BlueZ service.
+
+*   **Mock Device Roster**:
+
+    | # | Address | Name | Bluetooth Class | Battery Support |
+    |---|---|---|---|---|
+    | 1 | `AA:BB:CC:11:22:33` | `Wireless Headphones` | `0x240408` (Audio Headphones) | Yes |
+    | 2 | `AA:BB:CC:44:55:66` | `Bluetooth Keyboard` | `0x000540` (HID Keyboard) | Yes |
+    | 3 | `AA:BB:CC:77:88:99` | `Game Controller` | `0x000508` (HID Gamepad) | No |
+
+*   **Connection Simulation Sequence** (scripted, does not repeat):
+    1. T+3s — Device 1 (Wireless Headphones) connects → emits `"connected"` event.
+    2. T+10s — Device 2 (Bluetooth Keyboard) connects → emits `"connected"` event.
+    3. T+25s — Device 3 (Game Controller) connects → emits `"connected"` event.
+    4. T+40s — Device 3 (Game Controller) disconnects → emits `"disconnected"` event.
+
+*   **Battery Simulation**:
+    *   Headphones: starts at `87%`, decrements by `1%` every 60 seconds.
+    *   Keyboard: starts at `45%`, static (simulates a slow-draining or unknown-rate device).
+    *   Game Controller: no battery reporting (simulates a device without Battery Service GATT profile).
+
+*   **RSSI Simulation**:
+    *   All connected devices: oscillates using $\text{RSSI} = -55 + \text{int}(\sin(t / 10.0) \times 10.0)$ dBm, range $-65$ to $-45$ dBm.
+    *   Polled every 30 seconds (matching the default `bluetooth.update_interval_s`). Emits `"updated"` events when the computed value differs from the cached value.
+
 ---
 
-## 3. ADB Loopback Emulation (`MockADBClient`)
+## 4. ADB Loopback Emulation (`MockADBClient`)
 
 When started with the `--mock-adb` flag, the daemon spins up the `MockADBClient` interface.
 
@@ -94,21 +120,21 @@ When started with the `--mock-adb` flag, the daemon spins up the `MockADBClient`
 
 ---
 
-## 4. Manual WebSocket Integration Testing
+## 5. Manual WebSocket Integration Testing
 
-With the daemon running in emulation mode (`--emulate-metrics --mock-adb`), developers can easily verify connection frames without a mobile device.
+With the daemon running in emulation mode, developers can easily verify connection frames without a mobile device.
 
-### 4.1. CLI Socket Testing with `websocat`
+### 5.1. CLI Socket Testing with `websocat`
 [`websocat`](https://github.com/vi/websocat) is a robust command-line utility for interacting with WebSockets.
 *   **Install websocat**:
     ```bash
     cargo install websocat # or apt-get install websocat
     ```
-*   **Listen to Live Telemetry & Media Updates**:
+*   **Listen to Live Telemetry, Media & Bluetooth Updates**:
     ```bash
     websocat ws://127.0.0.1:12345/ws
     ```
-    *Output in console (telemetry pushes every 1s, media state on event)*:
+    *Output in console (telemetry pushes every 1s, bluetooth_state on events, media_state on event)*:
     ```json
     {"type":"telemetry","timestamp":1716214001,"data":{"cpu":{"usage_percent":18.45,"temp_celsius":48.2,"freq_mhz":2869.0},"gpu":{"usage_percent":42.1,"temp_celsius":59.3,"vram_used_bytes":4063225472,"vram_total_bytes":8589934592,"freq_mhz":931.5},"ram":{"used_bytes":13421772800,"total_bytes":34359738368,"percentage":39.06}}}
     {"type":"media_state","timestamp":1716214002,"data":{"active_players":[{"player_name":"spotify","playback_status":"Playing","volume":0.85,"position_microseconds":45000000,"metadata":{"track_id":"spotify:track:4PTG3Z6ehGkBFm5zOHYGaS","title":"Stayin' Alive","artist":["Bee Gees"],"album":"Saturday Night Fever","art_url":"https://images.example.com/stayinalive.jpg","length_microseconds":284000000}}]}}
@@ -132,7 +158,7 @@ With the daemon running in emulation mode (`--emulate-metrics --mock-adb`), deve
 
 ---
 
-### 4.2. Diagnostic Browser HTML Rig
+### 5.2. Diagnostic Browser HTML Rig
 For a quick visual confirmation, developers can open a simple, zero-dependency HTML file in their host browser to display the live telemetry metrics.
 
 Save the following code as `test_client.html` and open it in a browser:
@@ -218,7 +244,7 @@ Save the following code as `test_client.html` and open it in a browser:
 
 ---
 
-## 5. Automated Mocking (Unit Tests)
+## 6. Automated Mocking (Unit Tests)
 
 In Go automated test suites (e.g. `metrics_test.go`), hardware interfaces should be mocked without command line flags using Go's interface implementation standard:
 
@@ -251,18 +277,18 @@ func TestTelemetryBroadcaster(t *testing.T) {
 
 ---
 
-## 6. Devcontainer Testing & Network Boundaries
+## 7. Devcontainer Testing & Network Boundaries
 
 Developing and verifying the PC Dashboard Server inside a virtualized environment (such as VS Code Devcontainers) introduces distinct networking and hardware boundary challenges for both human developers and LLM agents. 
 
 To achieve full testability without compromising physical environments, the following patterns are established:
 
-### 6.1. Exposing the WebSocket Server (Port Forwarding)
+### 7.1. Exposing the WebSocket Server (Port Forwarding)
 The daemon binds strictly to local loopback `127.0.0.1:12345` inside the devcontainer. To enable diagnostic browser rigs or external clients on the host system to interact with the containerized WebSocket server, port `12345` must be forwarded:
 *   Add port `12345` to the `forwardPorts` list in `.devcontainer/devcontainer.json` (completed).
 *   This automatically maps `127.0.0.1:12345` on the host machine to the running server in the container, enabling local tools (like browser diagnostic screens and `websocat` on the host machine) to connect transparently.
 
-### 6.2. Connecting to the Host's Physical ADB Server
+### 7.2. Connecting to the Host's Physical ADB Server
 By default, the daemon attempts to connect to `127.0.0.1:5037` to track physical USB devices. Inside a devcontainer, `127.0.0.1` refers to the container itself, which lacks access to the host's USB controller and real ADB daemon.
 To connect to the host's actual ADB server (connected to physical companion devices or Android emulator instances):
 1.  **Configure Host Network Resolving**:
@@ -276,7 +302,7 @@ To connect to the host's actual ADB server (connected to physical companion devi
     Ensure the ADB daemon running on the host system is configured to accept TCP loopback connections.
 3.  This dynamically routes the socket tracking directly to the host's hardware state, allowing real-world testing of physical USB hotplug events entirely from inside the devcontainer.
 
-### 6.3. Direct ADB TCP Socket Mocking (In-Memory Integration Tests)
+### 7.3. Direct ADB TCP Socket Mocking (In-Memory Integration Tests)
 To allow LLM agents to execute automated integration tests (such as `go test ./...`) inside headless CI environments or local sandboxes where no ADB server is running at all, tests must mock the TCP protocol layer:
 *   **In-Memory Listeners**: Tests can instantiate a native Go TCP listener on a dynamic, local port (e.g. `:0`) and point `TCPADBClient` to it.
 *   **Simulating ADB Responses**: The test-side TCP listener parses incoming command streams and returns correct raw ADB hex frames (such as `OKAY` or tab-separated connection strings):
@@ -287,7 +313,7 @@ To allow LLM agents to execute automated integration tests (such as `go test ./.
     ```
 *   This pattern isolates the network socket logic from external environment states, giving both developers and AI agents instant, deterministic unit test validation of length-prefixed ADB frame parsing.
 
-### 6.4. Session D-Bus Socket Mocking (In-Memory Unit Tests)
+### 7.4. Session D-Bus Socket Mocking (In-Memory Unit Tests)
 In automated unit test pipelines where no D-Bus Session Bus daemon is active (e.g., standard Docker CI runners), the D-Bus communication must be mocked to keep tests independent of the OS state:
 *   **Go Mock Interfaces**: Automated tests query the `MPRISManager` interface and inject mock structs (`MockMPRISManager`) instead of launching a live `godbus` socket.
 *   **Test Validation**: This enables standard Go tests to assert that media control commands dispatched through the loopback WebSocket server successfully trigger the corresponding method call handlers and state shifts, isolating testing to the daemon orchestrator itself:
