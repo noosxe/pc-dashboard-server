@@ -1,9 +1,13 @@
 package mpris
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -314,11 +318,56 @@ func (m *DbusMPRISManager) fetchAndRegisterPlayer(serviceName, owner string) {
 		}
 	}
 
+	// Read Identity
+	identity := ""
+	identityVar, err := playerObj.GetProperty("org.mpris.MediaPlayer2.Identity")
+	if err == nil {
+		identity, _ = identityVar.Value().(string)
+	}
+
+	// Read DesktopEntry
+	desktopEntry := ""
+	desktopVar, err := playerObj.GetProperty("org.mpris.MediaPlayer2.DesktopEntry")
+	if err == nil {
+		desktopEntry, _ = desktopVar.Value().(string)
+	}
+
 	playerName := strings.TrimPrefix(serviceName, "org.mpris.MediaPlayer2.")
+
+	// Multi-tier Resolution Fallbacks
+	friendlyName := identity
+	lowerFriendly := strings.ToLower(friendlyName)
+
+	if friendlyName == "" || lowerFriendly == "firefox" || lowerFriendly == "chromium" || lowerFriendly == "chrome" {
+		if resolvedName := m.getFriendlyNameFromDesktopEntry(desktopEntry); resolvedName != "" {
+			friendlyName = resolvedName
+		} else if pidName := m.getExecutableNameFromOwner(owner); pidName != "" {
+			if resolvedName := m.getFriendlyNameFromDesktopEntry(pidName); resolvedName != "" {
+				friendlyName = resolvedName
+			} else {
+				friendlyName = strings.Title(pidName)
+			}
+		}
+	}
+
+	// Ensure desktopEntry falls back to playerName (without instance suffix) if it remains empty
+	if desktopEntry == "" {
+		parts := strings.Split(playerName, ".")
+		if len(parts) > 0 {
+			desktopEntry = parts[0]
+		}
+	}
+
+	// If friendlyName is still empty, fall back to capitalized desktopEntry
+	if friendlyName == "" {
+		friendlyName = strings.Title(desktopEntry)
+	}
 
 	m.mu.Lock()
 	m.activePlayers[owner] = &PlayerState{
 		PlayerName:     playerName,
+		Identity:       friendlyName,
+		DesktopEntry:   desktopEntry,
 		PlaybackStatus: status,
 		Volume:         volume,
 		PositionMicro:  position,
@@ -327,7 +376,100 @@ func (m *DbusMPRISManager) fetchAndRegisterPlayer(serviceName, owner string) {
 	m.ownerToService[owner] = serviceName
 	m.mu.Unlock()
 
-	m.logger.Info("Registered active MPRIS player", "name", playerName, "owner", owner, "status", status)
+	m.logger.Info("Registered active MPRIS player", "name", playerName, "friendly_name", friendlyName, "owner", owner, "status", status)
+}
+
+// getFriendlyNameFromDesktopEntry scans XDG directories to parse the .desktop file and extract its Name= property.
+func (m *DbusMPRISManager) getFriendlyNameFromDesktopEntry(desktopEntry string) string {
+	if desktopEntry == "" {
+		return ""
+	}
+
+	xdgDataDirs := os.Getenv("XDG_DATA_DIRS")
+	var searchDirs []string
+	if xdgDataDirs != "" {
+		searchDirs = strings.Split(xdgDataDirs, ":")
+	} else {
+		searchDirs = []string{"/usr/local/share", "/usr/share"}
+	}
+
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		searchDirs = append([]string{filepath.Join(homeDir, ".local/share")}, searchDirs...)
+	}
+
+	for _, dir := range searchDirs {
+		desktopPath := filepath.Join(dir, "applications", desktopEntry+".desktop")
+		info, err := os.Stat(desktopPath)
+		if err != nil {
+			continue
+		}
+
+		// Security constraint: Do not parse files larger than 64KB
+		if info.Size() > 65536 {
+			m.logger.Warn("Skipping excessively large desktop file for security limits", "path", desktopPath, "size", info.Size())
+			continue
+		}
+
+		file, err := os.Open(desktopPath)
+		if err != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(file)
+		inDesktopEntrySection := false
+		foundName := ""
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "[Desktop Entry]" {
+				inDesktopEntrySection = true
+				continue
+			} else if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+				inDesktopEntrySection = false
+				continue
+			}
+
+			if inDesktopEntrySection && strings.HasPrefix(line, "Name=") {
+				foundName = strings.TrimPrefix(line, "Name=")
+				break
+			}
+		}
+		file.Close()
+
+		if foundName != "" {
+			return foundName
+		}
+	}
+	return ""
+}
+
+// getExecutableNameFromOwner resolves the Unix process ID of the connection and returns the base binary name.
+func (m *DbusMPRISManager) getExecutableNameFromOwner(owner string) string {
+	if owner == "" {
+		return ""
+	}
+
+	obj := m.sendConn.Object("org.freedesktop.DBus", "/org/freedesktop/DBus")
+	var pid uint32
+	err := obj.Call("org.freedesktop.DBus.GetConnectionUnixProcessID", 0, owner).Store(&pid)
+	if err != nil {
+		m.logger.Debug("Failed to fetch process ID for D-Bus connection owner", "owner", owner, "error", err)
+		return ""
+	}
+
+	pidStr := strconv.Itoa(int(pid))
+
+	exePath, err := os.Readlink("/proc/" + pidStr + "/exe")
+	if err == nil {
+		return filepath.Base(exePath)
+	}
+
+	commBytes, err := os.ReadFile("/proc/" + pidStr + "/comm")
+	if err == nil {
+		return strings.TrimSpace(string(commBytes))
+	}
+
+	return ""
 }
 
 // handleDbusSignal routes and parses D-Bus event frames.

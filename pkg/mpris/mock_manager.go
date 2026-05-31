@@ -219,6 +219,8 @@ func (m *MockMPRISManager) broadcastStateLocked() {
 
 	state := PlayerState{
 		PlayerName:     "spotify",
+		Identity:       "Spotify",
+		DesktopEntry:   "spotify",
 		PlaybackStatus: m.status,
 		Volume:         m.volume,
 		PositionMicro:  m.positionMicro,

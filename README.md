@@ -23,7 +23,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Launches the companion Android application activity (`com.noosxe.pc_dashboard`).
   - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
   - Supports `--no-app-control` configuration flag to bypass automatic screen wakeup and app launch/cleanup routines for manual debugging sessions.
-- **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces.
+- **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces. Features a **Tiered Friendly Name Resolution Engine** that maps raw service name suffixes (like `"firefox.instance_1_63"`) to proper human-readable application names (like `"Mozilla zen"` or `"Zen Browser"`) by querying MPRIS branding properties, parsing XDG `.desktop` files, and performing process executable lookups.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🔒 Session Lock & ADB Screen Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients. Dynamically coordinates screen power states, leveraging native ADB shell keyevents to explicitly wake (`KEYCODE_WAKEUP`) or sleep (`KEYCODE_SLEEP`) the companion Android device screen synchronously with host display power (DPMS off/on) transitions (fully bypassable via `--no-app-control`).
 - **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
@@ -305,13 +305,7 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. 🎵 Friendly MPRIS Player Names (D-Bus) 🟡 *[Design Phase]*
-Resolve proper, human-friendly application names (e.g., `"Mozilla zen"`, `"Zen Browser"`) for MPRIS media players instead of raw internal D-Bus connection suffixes (e.g. `"firefox.instance_1_63"`).
-- **Outbound Stream**: Query the standard `org.mpris.MediaPlayer2.Identity` and `org.mpris.MediaPlayer2.DesktopEntry` properties to extract branding.
-- **Fallback Layers**: Parse standard XDG `.desktop` entries from local and system applications folders (`$XDG_DATA_DIRS/applications/`), and query the D-Bus connection Unix Process ID (`org.freedesktop.DBus.GetConnectionUnixProcessID`) to map the PID's executable path (from `/proc/<pid>/exe`) to its associated `.desktop` file name.
-- *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
-
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
