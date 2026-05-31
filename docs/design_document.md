@@ -24,6 +24,7 @@ This document outlines the selected tools, libraries, and protocols to implement
 | **WebSocket Networking** | `github.com/gorilla/websocket` or `nhooyr.io/websocket` | Standard Go framework for high-throughput, asynchronous WebSocket routing. | None (Pure Go) | **Highly Safe**: Complies fully with RFC 6455. Restricts listener strictly to the local loopback `127.0.0.1`. |
 | **Configuration Management** | `github.com/knadh/koanf/v2` | Lightweight, extensible configuration engine supporting YAML configs, environment variables, and CLI flags. | None (Pure Go) | **Safe**: Minimal, modern codebase. Parses strict schemas without arbitrary code execution vectors. |
 | **D-Bus & Media (MPRIS)** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus Session Bus to query and control MPRIS media players. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids binary/CLI dependencies and execution. |
+| **D-Bus & Power Profiles** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus System Bus to query and control system power profiles. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids spawning system shell processes. |
 
 ---
 
@@ -79,6 +80,7 @@ graph TD
     DaemonCore -->|uses| MPRISManager[MPRISManager Interface]
     DaemonCore -->|uses| NotificationManager[NotificationManager Interface]
     DaemonCore -->|uses| LockManager[LockManager Interface]
+    DaemonCore -->|uses| PowerProfilesManager[PowerProfilesManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
@@ -94,6 +96,9 @@ graph TD
 
     LockManager -.->|Implementation| DbusLock[DbusLockManager <br>Pure Go D-Bus session/system buses]
     LockManager -.->|Implementation| MockLock[MockLockManager <br>Simulated session lock events]
+
+    PowerProfilesManager -.->|Implementation| DbusPower[DbusPowerProfilesManager <br>Pure Go D-Bus system bus]
+    PowerProfilesManager -.->|Implementation| MockPower[MockPowerProfilesManager <br>Simulated power profiles]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -334,7 +339,40 @@ type LockManager interface {
 	1.  `DbusLockManager`: Production client monitoring systemd session lock/unlock events via `dbus.ConnectSystemBus()` and screensaver activation changes via `dbus.ConnectSessionBus()`, piping them to a single unified channel.
 	2.  `MockLockManager`: Emulation client that simulates lock and unlock status toggles on a periodic ticker to enable offline testing.
 
-### 4.6. Application Package & Module Layout
+### 4.6. Power Profiles Interface (`PowerProfilesManager`)
+The system power profile tracking and switching engine communicates exclusively through this interface:
+
+```go
+package power
+
+import "context"
+
+// PowerProfile holds the name of a power profile.
+type PowerProfile struct {
+	Profile string `json:"profile"`
+}
+
+// PowerProfileState holds the current power profile and available profiles.
+type PowerProfileState struct {
+	ActiveProfile     string         `json:"active_profile"`
+	AvailableProfiles []PowerProfile `json:"available_profiles"`
+}
+
+// PowerProfilesManager defines the contract for querying and controlling power profiles.
+type PowerProfilesManager interface {
+	// Start begins monitoring the power profiles and pushes state updates.
+	Start(ctx context.Context) (<-chan PowerProfileState, error)
+
+	// SetPowerProfile writes a new active power profile name to D-Bus.
+	SetPowerProfile(ctx context.Context, profile string) error
+}
+```
+
+*   **Implementations**:
+	1.  `DbusPowerProfilesManager`: Production manager communicating directly over the D-Bus System Bus with `net.hadess.PowerProfiles` using `godbus`.
+	2.  `MockPowerProfilesManager`: Emulation client that simulates supported profiles (`balanced`, `power-saver`, `performance`) and maintains profile change state in-memory to enable containerized testing.
+
+### 4.7. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -365,9 +403,13 @@ pc-dashboard-server/
 │   │   ├── dbus_manager.go       # Production NotificationManager (native D-Bus:session)
 │   │   └── mock_manager.go       # Simulated notification event generator
 │   ├── lock/                     # Session Lock & Screensaver monitoring module
-				│   │   ├── lock.go               # LockManager interface & event models
+│   │   ├── lock.go               # LockManager interface & event models
 │   │   ├── dbus_manager.go       # Production LockManager (Session & System D-Bus)
 │   │   └── mock_manager.go       # Simulated session lock event generator
+│   ├── power/                    # Power profiles monitoring & control module
+│   │   ├── power.go              # PowerProfilesManager interface & event models
+│   │   ├── dbus_manager.go       # Production PowerProfilesManager (System D-Bus)
+│   │   └── mock_manager.go       # Simulated power profiles event generator
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -379,15 +421,16 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, and `LockManager`.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, and `PowerProfilesManager`.
 2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
-4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, and `LockManager` event channels, pushing `media_state`, `notification_event`, and `session_lock` updates to the WebSocket broadcaster as they arrive.
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, `LockManager`, and `PowerProfilesManager` event channels, pushing `media_state`, `notification_event`, `session_lock`, and `power_profile_state` updates to the WebSocket broadcaster as they arrive.
    - **Session Lock State Caching**: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
-5. **Command Ingestion Phase**: WebSocket clients send `notification_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager.SendNotification` to trigger native D-Bus toasts on the host desktop.
+   - **Power Profile Caching**: Similarly, the engine caches the last received `power_profile_state` to immediately push the current system profile and list of available profiles to clients as soon as they connect.
+5. **Command Ingestion Phase**: WebSocket clients send `notification_command`, `media_command`, or `power_profile_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager`, `MPRISManager`, or `PowerProfilesManager` to execute actions or trigger properties writes on the host system.
 6. **Local Command Socket Triggering**: 
    - When the daemon starts, the `pkg/daemon` engine starts the `command_listener` goroutine which binds to a local Unix Domain Socket (default `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
-   - The CLI `cmd/trigger.go` command runs as a separate process invocation. It validates the user's requested trigger (lock, unlock, notification, etc.), constructs a structured `UDSRequest`, dials the Unix socket, and transmits the payload.
+   - The CLI `cmd/trigger.go` command runs as a separate process invocation. It validates the user's requested trigger (lock, unlock, notification, power profile, etc.), constructs a structured `UDSRequest`, dials the Unix socket, and transmits the payload.
    - The `command_listener` reads this request, validates the type/schema, retrieves the current connection pool status to report active WebSocket client count, broadcasts the payload to all active WebSocket clients, and writes back a `UDSResponse` containing success state and routed client count.
 
 
