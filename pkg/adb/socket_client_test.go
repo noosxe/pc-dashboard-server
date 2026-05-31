@@ -218,3 +218,55 @@ func TestSocketADBClient_CloseApp(t *testing.T) {
 		t.Errorf("CloseApp failed: %v", err)
 	}
 }
+
+// TestSocketADBClient_SleepDevice verifies the screen sleep adb command payload.
+func TestSocketADBClient_SleepDevice(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test TCP listener: %v", err)
+	}
+	defer listener.Close()
+
+	addr := listener.Addr().String()
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	portStr := parts[1]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("failed to parse listener port: %v", err)
+	}
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Read select-device command ("host:transport:TEST_SLEEP")
+		cmd, err := readTestFrame(conn)
+		if err != nil || cmd != "host:transport:TEST_SLEEP" {
+			return
+		}
+		if _, err := conn.Write([]byte("OKAY")); err != nil {
+			return
+		}
+
+		// Read sleep command ("shell:input keyevent KEYCODE_SLEEP")
+		sleepCmd, err := readTestFrame(conn)
+		if err != nil || sleepCmd != "shell:input keyevent KEYCODE_SLEEP" {
+			return
+		}
+		if _, err := conn.Write([]byte("OKAY")); err != nil {
+			return
+		}
+	}()
+
+	client := NewSocketADBClient(host, port, slog.Default())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := client.SleepDevice(ctx, "TEST_SLEEP"); err != nil {
+		t.Errorf("SleepDevice failed: %v", err)
+	}
+}

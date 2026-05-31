@@ -328,6 +328,12 @@ Since multiple signals (e.g. systemd-logind `Lock` and GNOME Screensaver `Active
 1.  **Deduplication**: The engine tracks the current session lock state. It deduplicates incoming events and only triggers an outbound WebSocket notification if a genuine transition has occurred.
 2.  **Graceful Fallback**: If either bus connection or registration fails (e.g., in headless environments, containers, or systems without a system bus), the daemon logs a warning and gracefully operates using only the successful bus, ensuring continuous operation.
 
+#### D. Companion App Screen Wake & Sleep Control (DPMS Sync)
+Upon detecting lock state transitions (representing screen power changes/DPMS off/on events), the daemon uses native ADB protocol socket commands over TCP loopback to control the companion device's screen state:
+1. **Screen Sleep (DPMS Off / Lock)**: When the session locks (screensaver active / physical console locked), the daemon uses raw TCP sockets on port `5037` to issue the non-toggling `shell:input keyevent KEYCODE_SLEEP` (keyevent `223`) command to the target Android companion app device. This puts the Android device's screen to sleep to conserve energy and match the host's screen-off state.
+2. **Screen Wake (DPMS On / Unlock)**: When the session unlocks (screensaver inactive / physical console unlocked), the daemon issues the non-toggling `shell:input keyevent KEYCODE_WAKEUP` (keyevent `224`) command to the target Android companion app device, waking its screen to resume status visualization immediately.
+3. **App-Control Bypass**: If the server configuration has `no_app_control` set to `true`, these automatic wakeup/sleep ADB signals are bypassed.
+
 ---
 
 ### 3.9. Local Command Trigger Socket (Unix Domain Socket)

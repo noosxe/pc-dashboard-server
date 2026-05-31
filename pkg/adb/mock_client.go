@@ -66,6 +66,12 @@ func (c *MockADBClient) WakeDevice(ctx context.Context, serial string) error {
 	return nil
 }
 
+// SleepDevice mocks screen sleep KEYCODE_SLEEP event.
+func (c *MockADBClient) SleepDevice(ctx context.Context, serial string) error {
+	c.logger.Info("Sleeping screen", "serial", serial)
+	return nil
+}
+
 // CloseApp mocks stopping the target companion app.
 func (c *MockADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
 	c.logger.Info("Closing activity (force-stop)", "package", pkg, "serial", serial)
