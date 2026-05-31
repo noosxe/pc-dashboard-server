@@ -476,7 +476,9 @@ func (m *DbusMPRISManager) broadcastState() {
 
 // parseMetadata converts standard D-Bus map variants into clean structures.
 func parseMetadata(metaMap map[string]dbus.Variant) PlayerMetadata {
-	var meta PlayerMetadata
+	meta := PlayerMetadata{
+		Artist: []string{},
+	}
 
 	if v, ok := metaMap["mpris:trackid"]; ok {
 		switch val := v.Value().(type) {

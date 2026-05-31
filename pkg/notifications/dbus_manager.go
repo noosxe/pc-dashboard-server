@@ -82,6 +82,9 @@ func (m *DbusNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 				summary, _ := msg.Body[3].(string)
 				body, _ := msg.Body[4].(string)
 				actions, _ := msg.Body[5].([]string)
+				if actions == nil {
+					actions = []string{}
+				}
 				hintsRaw, _ := msg.Body[6].(map[string]dbus.Variant)
 				expireTimeout, _ := msg.Body[7].(int32)
 
