@@ -305,7 +305,13 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. ⚡ Additional Planned Enhancements
+### 2. 🎵 Friendly MPRIS Player Names (D-Bus) 🟡 *[Design Phase]*
+Resolve proper, human-friendly application names (e.g., `"Mozilla zen"`, `"Zen Browser"`) for MPRIS media players instead of raw internal D-Bus connection suffixes (e.g. `"firefox.instance_1_63"`).
+- **Outbound Stream**: Query the standard `org.mpris.MediaPlayer2.Identity` and `org.mpris.MediaPlayer2.DesktopEntry` properties to extract branding.
+- **Fallback Layers**: Parse standard XDG `.desktop` entries from local and system applications folders (`$XDG_DATA_DIRS/applications/`), and query the D-Bus connection Unix Process ID (`org.freedesktop.DBus.GetConnectionUnixProcessID`) to map the PID's executable path (from `/proc/<pid>/exe`) to its associated `.desktop` file name.
+- *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
+
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

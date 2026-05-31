@@ -208,6 +208,8 @@ This is an event-driven payload pushed asynchronously by the daemon whenever:
             "required": ["player_name", "playback_status", "volume", "position_microseconds", "metadata"],
             "properties": {
               "player_name": { "type": "string" },
+              "identity": { "type": "string" },
+              "desktop_entry": { "type": "string" },
               "playback_status": { "type": "string", "enum": ["Playing", "Paused", "Stopped"] },
               "volume": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
               "position_microseconds": { "type": "integer", "minimum": 0 },
@@ -240,12 +242,14 @@ This is an event-driven payload pushed asynchronously by the daemon whenever:
   "data": {
     "active_players": [
       {
-        "player_name": "spotify",
+        "player_name": "firefox.instance_1_63",
+        "identity": "Mozilla zen",
+        "desktop_entry": "zen",
         "playback_status": "Playing",
         "volume": 0.85,
         "position_microseconds": 45120000,
         "metadata": {
-          "track_id": "spotify:track:4PTG3Z6ehGkBFm5zOHYGaS",
+          "track_id": "firefox:track:4PTG3Z6ehGkBFm5zOHYGaS",
           "title": "Stayin' Alive",
           "artist": ["Bee Gees"],
           "album": "Saturday Night Fever",
