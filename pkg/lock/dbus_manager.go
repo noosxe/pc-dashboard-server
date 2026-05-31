@@ -136,6 +136,7 @@ func (m *DbusLockManager) Start(ctx context.Context) (<-chan SessionLockEvent, e
 
 // handleSessionSignal handles incoming screensaver change events.
 func (m *DbusLockManager) handleSessionSignal(sig *dbus.Signal, out chan<- SessionLockEvent) {
+	m.logger.Debug("Received D-Bus signal in Session lock manager", "sender", sig.Sender, "path", sig.Path, "name", sig.Name, "body", sig.Body)
 	if sig.Name == "org.freedesktop.ScreenSaver.ActiveChanged" || sig.Name == "org.gnome.ScreenSaver.ActiveChanged" {
 		if len(sig.Body) > 0 {
 			if active, ok := sig.Body[0].(bool); ok {
@@ -148,6 +149,7 @@ func (m *DbusLockManager) handleSessionSignal(sig *dbus.Signal, out chan<- Sessi
 
 // handleSystemSignal handles incoming systemd session lock/unlock events.
 func (m *DbusLockManager) handleSystemSignal(sig *dbus.Signal, out chan<- SessionLockEvent) {
+	m.logger.Debug("Received D-Bus signal in System lock manager", "sender", sig.Sender, "path", sig.Path, "name", sig.Name, "body", sig.Body)
 	switch sig.Name {
 	case "org.freedesktop.login1.Session.Lock":
 		m.logger.Debug("Received systemd Lock signal")

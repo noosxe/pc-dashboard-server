@@ -40,14 +40,21 @@ func NewDbusMPRISManager(logger *slog.Logger) (*DbusMPRISManager, error) {
 // Start begins dynamic D-Bus session eavesdropping for media players.
 func (m *DbusMPRISManager) Start(ctx context.Context) (<-chan MediaEvent, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if m.started {
+		m.mu.Unlock()
 		return m.eventsChan, nil
 	}
 
+	m.eventsChan = make(chan MediaEvent, 50)
+	m.started = true
+	m.mu.Unlock()
+
 	monitorConn, err := dbus.ConnectSessionBus()
 	if err != nil {
+		m.mu.Lock()
+		m.started = false
+		m.eventsChan = nil
+		m.mu.Unlock()
 		return nil, fmt.Errorf("failed to connect to session bus for MPRIS monitoring: %w", err)
 	}
 
@@ -56,22 +63,27 @@ func (m *DbusMPRISManager) Start(ctx context.Context) (<-chan MediaEvent, error)
 	err = obj.Call("org.freedesktop.DBus.AddMatch", 0, "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged'").Err
 	if err != nil {
 		monitorConn.Close()
+		m.mu.Lock()
+		m.started = false
+		m.eventsChan = nil
+		m.mu.Unlock()
 		return nil, fmt.Errorf("failed to add NameOwnerChanged match signal: %w", err)
 	}
 
 	err = obj.Call("org.freedesktop.DBus.AddMatch", 0, "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/mpris/MediaPlayer2'").Err
 	if err != nil {
 		monitorConn.Close()
+		m.mu.Lock()
+		m.started = false
+		m.eventsChan = nil
+		m.mu.Unlock()
 		return nil, fmt.Errorf("failed to add PropertiesChanged match signal: %w", err)
 	}
 
 	ch := make(chan *dbus.Signal, 100)
 	monitorConn.Signal(ch)
 
-	m.eventsChan = make(chan MediaEvent, 50)
-	m.started = true
-
-	// Bootstrap currently active players
+	// Bootstrap currently active players (runs safely now since m.mu is unlocked)
 	m.bootstrapActivePlayers()
 
 	m.logger.Info("D-Bus MPRIS player monitoring successfully initialized")
@@ -320,6 +332,7 @@ func (m *DbusMPRISManager) fetchAndRegisterPlayer(serviceName, owner string) {
 
 // handleDbusSignal routes and parses D-Bus event frames.
 func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
+	m.logger.Debug("Received D-Bus signal in MPRIS manager", "sender", sig.Sender, "path", sig.Path, "name", sig.Name, "body", sig.Body)
 	switch sig.Name {
 	case "org.freedesktop.DBus.NameOwnerChanged":
 		if len(sig.Body) < 3 {
@@ -375,18 +388,21 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 			if s, ok := val.Value().(string); ok {
 				player.PlaybackStatus = PlaybackStatus(s)
 				updated = true
+				m.logger.Debug("MPRIS player PlaybackStatus changed", "player", player.PlayerName, "status", s)
 			}
 		}
 		if val, ok := changedProps["Volume"]; ok {
 			if v, ok := val.Value().(float64); ok {
 				player.Volume = v
 				updated = true
+				m.logger.Debug("MPRIS player Volume changed", "player", player.PlayerName, "volume", v)
 			}
 		}
 		if val, ok := changedProps["Metadata"]; ok {
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
 				player.Metadata = parseMetadata(rawMeta)
 				updated = true
+				m.logger.Debug("MPRIS player Metadata changed", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
 			}
 		}
 		m.mu.Unlock()
@@ -460,7 +476,9 @@ func (m *DbusMPRISManager) broadcastState() {
 
 // parseMetadata converts standard D-Bus map variants into clean structures.
 func parseMetadata(metaMap map[string]dbus.Variant) PlayerMetadata {
-	var meta PlayerMetadata
+	meta := PlayerMetadata{
+		Artist: []string{},
+	}
 
 	if v, ok := metaMap["mpris:trackid"]; ok {
 		switch val := v.Value().(type) {
