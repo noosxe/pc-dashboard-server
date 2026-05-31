@@ -16,6 +16,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
+	"github.com/noosxe/pc-dashboard-server/pkg/power"
 )
 
 func TestEngine_CommandListenerHandshake(t *testing.T) {
@@ -33,8 +34,9 @@ func TestEngine_CommandListenerHandshake(t *testing.T) {
 	nm := notifications.NewMockNotificationManager(logger)
 	mm := mpris.NewMockMPRISManager(logger)
 	lm := lock.NewMockLockManager(logger)
+	pm := power.NewMockPowerProfilesManager(logger)
 
-	engine := NewEngine(cfg, mr, ac, nm, mm, lm, logger, logger)
+	engine := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -127,9 +129,10 @@ func TestEngine_CommandListenerConflict(t *testing.T) {
 	nm := notifications.NewMockNotificationManager(logger)
 	mm := mpris.NewMockMPRISManager(logger)
 	lm := lock.NewMockLockManager(logger)
+	pm := power.NewMockPowerProfilesManager(logger)
 
-	engine1 := NewEngine(cfg, mr, ac, nm, mm, lm, logger, logger)
-	engine2 := NewEngine(cfg, mr, ac, nm, mm, lm, logger, logger)
+	engine1 := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
+	engine2 := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

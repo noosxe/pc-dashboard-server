@@ -13,6 +13,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
+	"github.com/noosxe/pc-dashboard-server/pkg/power"
 )
 
 // UDSRequest represents an incoming trigger request via local Unix socket.
@@ -152,6 +153,23 @@ func (e *Engine) handleCommandConnection(conn net.Conn) {
 		}
 		broadcastPayload = TelemetryPayload{
 			Type:      "telemetry",
+			Timestamp: time.Now().Unix(),
+			Data:      ev,
+		}
+
+	case "power_profile_state":
+		var ev power.PowerProfileState
+		if err := json.Unmarshal(req.Data, &ev); err != nil {
+			e.writeUDSResponse(conn, UDSResponse{Success: false, Error: "failed to decode power_profile_state data: " + err.Error()})
+			return
+		}
+		// Cache the power profile state
+		e.powerStateMu.Lock()
+		e.lastPowerState = &ev
+		e.powerStateMu.Unlock()
+
+		broadcastPayload = PowerProfileStatePayload{
+			Type:      "power_profile_state",
 			Timestamp: time.Now().Unix(),
 			Data:      ev,
 		}

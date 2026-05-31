@@ -16,6 +16,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
+	"github.com/noosxe/pc-dashboard-server/pkg/power"
 	"github.com/spf13/cobra"
 )
 
@@ -162,12 +163,27 @@ and loopback WebSocket streaming server.`,
 			}
 		}
 
-		// 8. Setup termination context
+		// 8. Resolve Power Profiles provider based on emulation flags
+		var pm power.PowerProfilesManager
+		if emulateMetrics {
+			cliLogger.Info("Mock Power Profiles Mode enabled (Emulation Mode): Using MockPowerProfilesManager")
+			pm = power.NewMockPowerProfilesManager(logger.With("module", "power"))
+		} else {
+			cliLogger.Info("Production Power Profiles Mode enabled: Using DbusPowerProfilesManager")
+			var err error
+			pm, err = power.NewDbusPowerProfilesManager(logger.With("module", "power"))
+			if err != nil {
+				cliLogger.Warn("Failed to connect to D-Bus for power profiles, falling back to mock mode", "error", err)
+				pm = power.NewMockPowerProfilesManager(logger.With("module", "power"))
+			}
+		}
+
+		// 9. Setup termination context
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// 9. Build and start daemon engine
-		engine := daemon.NewEngine(cfg, mr, ac, nm, mm, lm, daemonLogger, websocketLogger)
+		// 10. Build and start daemon engine
+		engine := daemon.NewEngine(cfg, mr, ac, nm, mm, lm, pm, daemonLogger, websocketLogger)
 		if err := engine.Start(ctx); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				cliLogger.Error("Daemon terminated with error", "error", err)
