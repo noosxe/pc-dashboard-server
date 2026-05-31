@@ -31,6 +31,7 @@ type ConnectionPool struct {
 	onAction              func(command string)
 	onNotificationCommand func(notifications.NotificationRequest) (uint32, error)
 	onMediaCommand        func(playerName string, command string, args map[string]interface{}) error
+	onPowerProfileCommand func(profile string) error
 	onConnect             func(conn *ClientConn)
 }
 
@@ -41,6 +42,7 @@ func NewConnectionPool(
 	onAction func(command string),
 	onNotificationCommand func(notifications.NotificationRequest) (uint32, error),
 	onMediaCommand func(playerName string, command string, args map[string]interface{}) error,
+	onPowerProfileCommand func(profile string) error,
 	onConnect func(conn *ClientConn),
 ) *ConnectionPool {
 	return &ConnectionPool{
@@ -50,6 +52,7 @@ func NewConnectionPool(
 		onAction:              onAction,
 		onNotificationCommand: onNotificationCommand,
 		onMediaCommand:        onMediaCommand,
+		onPowerProfileCommand: onPowerProfileCommand,
 		onConnect:             onConnect,
 	}
 }
@@ -129,6 +132,9 @@ type InboundMessage struct {
 	// Media control fields
 	PlayerName string            `json:"player_name,omitempty"`
 	Args       *MediaCommandArgs `json:"args,omitempty"`
+
+	// Power profile fields
+	Profile string `json:"profile,omitempty"`
 }
 
 // ElementSettings outlines configuration update payloads.
@@ -245,6 +251,23 @@ func (p *ConnectionPool) HandleClient(wsConn *websocket.Conn) {
 				} else {
 					_ = client.WriteJSON(map[string]interface{}{
 						"type":   "media_response",
+						"status": "success",
+					})
+				}
+			}
+		case "power_profile_command":
+			if p.onPowerProfileCommand != nil {
+				err := p.onPowerProfileCommand(inbound.Profile)
+				if err != nil {
+					p.logger.Error("Failed to execute power profile command", "error", err)
+					_ = client.WriteJSON(map[string]interface{}{
+						"type":   "power_profile_response",
+						"status": "error",
+						"error":  err.Error(),
+					})
+				} else {
+					_ = client.WriteJSON(map[string]interface{}{
+						"type":   "power_profile_response",
 						"status": "success",
 					})
 				}

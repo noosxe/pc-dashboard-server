@@ -13,6 +13,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
+	"github.com/noosxe/pc-dashboard-server/pkg/power"
 	"github.com/noosxe/pc-dashboard-server/pkg/websocket"
 )
 
@@ -44,43 +45,54 @@ type SessionLockPayload struct {
 	Data      lock.SessionLockEvent `json:"data"`
 }
 
+// PowerProfileStatePayload outlines the outer JSON wrapper broadcasted to clients for power profiles.
+type PowerProfileStatePayload struct {
+	Type      string                  `json:"type"`
+	Timestamp int64                   `json:"timestamp"`
+	Data      power.PowerProfileState `json:"data"`
+}
+
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
-	logger          *slog.Logger
-	cfg             *config.Config
-	metrics         metrics.MetricsReader
-	adbClient       adb.ADBClient
-	notificationMgr notifications.NotificationManager
-	mprisMgr        mpris.MPRISManager
-	lockMgr         lock.LockManager
-	pool            *websocket.ConnectionPool
-	wsServer        *websocket.Server
-	intervalMu      sync.Mutex
-	interval        time.Duration
-	resetChan       chan time.Duration
-	activeSerials   map[string]bool
-	serialsMu       sync.RWMutex
-	lockStateMu     sync.RWMutex
-	lastLockState   *lock.SessionLockEvent
+	logger           *slog.Logger
+	cfg              *config.Config
+	metrics          metrics.MetricsReader
+	adbClient        adb.ADBClient
+	notificationMgr  notifications.NotificationManager
+	mprisMgr         mpris.MPRISManager
+	lockMgr          lock.LockManager
+	powerProfilesMgr power.PowerProfilesManager
+	pool             *websocket.ConnectionPool
+	wsServer         *websocket.Server
+	intervalMu       sync.Mutex
+	interval         time.Duration
+	resetChan        chan time.Duration
+	activeSerials    map[string]bool
+	serialsMu        sync.RWMutex
+	lockStateMu      sync.RWMutex
+	lastLockState    *lock.SessionLockEvent
+	powerStateMu     sync.RWMutex
+	lastPowerState   *power.PowerProfileState
 }
 
 // NewEngine constructs a central Orchestrator.
-func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, lm lock.LockManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
+func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, lm lock.LockManager, pm power.PowerProfilesManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
-		logger:          daemonLogger,
-		cfg:             cfg,
-		metrics:         mr,
-		adbClient:       ac,
-		notificationMgr: nm,
-		mprisMgr:        mm,
-		lockMgr:         lm,
-		interval:        time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
-		resetChan:       make(chan time.Duration, 5),
-		activeSerials:   make(map[string]bool),
+		logger:           daemonLogger,
+		cfg:              cfg,
+		metrics:          mr,
+		adbClient:        ac,
+		notificationMgr:  nm,
+		mprisMgr:         mm,
+		lockMgr:          lm,
+		powerProfilesMgr: pm,
+		interval:         time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
+		resetChan:        make(chan time.Duration, 5),
+		activeSerials:    make(map[string]bool),
 	}
 
 	// Wire callbacks into the WebSocket connection pool
-	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand, e.handleMediaCommand, e.handleClientConnect)
+	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand, e.handleMediaCommand, e.handlePowerProfileCommand, e.handleClientConnect)
 	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, websocketLogger)
 
 	return e
@@ -138,7 +150,15 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 	}()
 
-	// 7. Boot Local UDS Command Socket listener thread
+	// 7. Boot Power Profiles monitoring thread
+	go func() {
+		if err := e.runPowerProfilesMonitor(gCtx); err != nil {
+			e.logger.Error("Power profiles monitor terminated", "error", err)
+			errChan <- err
+		}
+	}()
+
+	// 8. Boot Local UDS Command Socket listener thread
 	go func() {
 		if err := e.runCommandSocket(gCtx); err != nil {
 			e.logger.Error("Local command socket listener terminated with error", "error", err)
@@ -479,7 +499,7 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 	}
 }
 
-// handleClientConnect pushes the cached session lock state to a newly connected client.
+// handleClientConnect pushes the cached session lock state and power profile state to a newly connected client.
 func (e *Engine) handleClientConnect(conn *websocket.ClientConn) {
 	e.lockStateMu.RLock()
 	state := e.lastLockState
@@ -499,6 +519,25 @@ func (e *Engine) handleClientConnect(conn *websocket.ClientConn) {
 	} else {
 		e.logger.Debug("No initial session lock state cached, skipping push")
 	}
+
+	e.powerStateMu.RLock()
+	pState := e.lastPowerState
+	e.powerStateMu.RUnlock()
+
+	if pState != nil {
+		payload := PowerProfileStatePayload{
+			Type:      "power_profile_state",
+			Timestamp: time.Now().Unix(),
+			Data:      *pState,
+		}
+		if err := conn.WriteJSON(payload); err != nil {
+			e.logger.Error("Failed to send initial power profile state to client", "error", err)
+		} else {
+			e.logger.Info("Sent initial power profile state to client", "active", pState.ActiveProfile)
+		}
+	} else {
+		e.logger.Debug("No initial power profile state cached, skipping push")
+	}
 }
 
 // handleMediaCommand processes media control requests routed from WebSocket clients.
@@ -507,4 +546,43 @@ func (e *Engine) handleMediaCommand(playerName string, command string, args map[
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	return e.mprisMgr.SendCommand(ctx, playerName, command, args)
+}
+
+// runPowerProfilesMonitor listens to active power profile changes and broadcasts them to clients.
+func (e *Engine) runPowerProfilesMonitor(ctx context.Context) error {
+	events, err := e.powerProfilesMgr.Start(ctx)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-events:
+			if !ok {
+				return nil
+			}
+
+			// Cache the last power profile state
+			e.powerStateMu.Lock()
+			e.lastPowerState = &ev
+			e.powerStateMu.Unlock()
+
+			payload := PowerProfileStatePayload{
+				Type:      "power_profile_state",
+				Timestamp: time.Now().Unix(),
+				Data:      ev,
+			}
+			e.pool.Broadcast(payload)
+		}
+	}
+}
+
+// handlePowerProfileCommand processes requests to switch power profiles from companion apps.
+func (e *Engine) handlePowerProfileCommand(profile string) error {
+	e.logger.Info("Switching system power profile via WebSocket", "profile", profile)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return e.powerProfilesMgr.SetPowerProfile(ctx, profile)
 }

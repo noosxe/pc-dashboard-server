@@ -19,6 +19,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
+	"github.com/noosxe/pc-dashboard-server/pkg/power"
 )
 
 func TestEngine_LockStateCaching(t *testing.T) {
@@ -39,7 +40,8 @@ func TestEngine_LockStateCaching(t *testing.T) {
 	lockEvents := make(chan lock.SessionLockEvent, 5)
 	lm := &manualLockManager{events: lockEvents}
 
-	engine := NewEngine(cfg, mr, ac, nm, mm, lm, logger, logger)
+	pm := power.NewMockPowerProfilesManager(logger)
+	engine := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
 
 	// 2. Start runLockMonitor in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,7 +194,7 @@ func TestEngine_NoAppControl(t *testing.T) {
 	cfg.ADB.NoAppControl = true
 
 	ac := &trackingADBClient{}
-	engine := NewEngine(cfg, nil, ac, nil, nil, nil, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, logger, logger)
 
 	// Trigger bootstrapDevice
 	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
@@ -220,7 +222,7 @@ func TestEngine_AppControlEnabled(t *testing.T) {
 	cfg.ADB.NoAppControl = false
 
 	ac := &trackingADBClient{}
-	engine := NewEngine(cfg, nil, ac, nil, nil, nil, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, logger, logger)
 
 	// Trigger bootstrapDevice
 	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
@@ -251,7 +253,7 @@ func TestEngine_LockUnlockTriggersAdb(t *testing.T) {
 	lockEvents := make(chan lock.SessionLockEvent, 5)
 	lm := &manualLockManager{events: lockEvents}
 
-	engine := NewEngine(cfg, nil, ac, nil, nil, lm, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, lm, nil, logger, logger)
 	engine.activeSerials["TEST_SERIAL"] = true
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -292,7 +294,7 @@ func TestEngine_LockUnlockNoAppControl(t *testing.T) {
 	lockEvents := make(chan lock.SessionLockEvent, 5)
 	lm := &manualLockManager{events: lockEvents}
 
-	engine := NewEngine(cfg, nil, ac, nil, nil, lm, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, lm, nil, logger, logger)
 	engine.activeSerials["TEST_SERIAL"] = true
 
 	ctx, cancel := context.WithCancel(context.Background())

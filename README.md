@@ -26,10 +26,11 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces. Features a **Tiered Friendly Name Resolution Engine** that maps raw service name suffixes (like `"firefox.instance_1_63"`) to proper human-readable application names (like `"Mozilla zen"` or `"Zen Browser"`) by querying MPRIS branding properties, parsing XDG `.desktop` files, and performing process executable lookups.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🔒 Session Lock & ADB Screen Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients. Dynamically coordinates screen power states, leveraging native ADB shell keyevents to explicitly wake (`KEYCODE_WAKEUP`) or sleep (`KEYCODE_SLEEP`) the companion Android device screen synchronously with host display power (DPMS off/on) transitions (fully bypassable via `--no-app-control`).
+- **🔋 Power Profiles Control & Sync (D-Bus)**: Real-time discovery, state monitoring, and direct control of host power profiles (e.g. `power-saver`, `balanced`, `performance`) via standard system D-Bus interfaces targeting `power-profiles-daemon`. Includes full input sanitization boundaries validating inbound profile requests against system-supported power options before execution.
 - **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
-- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms and mock MPRIS media controls), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
+- **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms, mock MPRIS media controls, and simulated power profile states), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
 
 ---
@@ -299,19 +300,13 @@ journalctl --user -u pc-dashboard.service -f -n 100
 
 We are continuously expanding the capabilities of the PC Dashboard ecosystem. Below are the key initiatives currently planned or underway:
 
-### 1. 🔋 Power Profiles Control & Sync (D-Bus) 🟡 *[Design Phase]*
-Integrate with the Linux host's D-Bus system bus via `power-profiles-daemon` to dynamically discover supported power profiles, listen for real-time active profile transitions, and set system power profiles directly from the companion Android app.
-- **Outbound Stream**: Asynchronously fetch available profiles (e.g. `power-saver`, `balanced`, `performance`) and stream real-time D-Bus `PropertiesChanged` events conveying active profile shifts.
-- **Inbound Commands**: Support WebSocket commands from the companion app (`power_profile_command`) to seamlessly write and activate system power profiles on the host machine.
-- *Status*: Detailed design, security boundaries, and WebSocket/D-Bus schemas have been documented. Awaiting design review and approval.
-
-### 2. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
+### 1. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
 Integrate with the Linux host's D-Bus session bus to correlate system-assigned notification IDs and allow the companion Android app to trigger action buttons (e.g. Reply, Dismiss, Custom actions) on intercepted notifications and close them remotely.
 - **Outbound Stream**: Intercept both method calls and method returns of desktop notifications, correlate their properties using call/reply serial numbers, and push events complete with unique notification IDs and action options.
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
