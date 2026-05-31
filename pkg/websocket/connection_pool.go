@@ -148,6 +148,8 @@ func (p *ConnectionPool) HandleClient(wsConn *websocket.Conn) {
 			break
 		}
 
+		p.logger.Debug("Received raw message from companion app", "payload", string(msgBytes))
+
 		var inbound InboundMessage
 		if err := json.Unmarshal(msgBytes, &inbound); err != nil {
 			p.logger.Error("Parse error on inbound message", "error", err)
