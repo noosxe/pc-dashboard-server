@@ -63,25 +63,32 @@ The Telemetry engine gathers host statistics every 1.0 second (hardcoded interva
 *   **Temperature**: Read from Linux `/sys/` interface.
     *   *Primary Route*: Thermal Zones: `/sys/class/thermal/thermal_zone*/temp` (selecting zones where `type` contains `x86_pkg_temp`, `cpu-thermal`, or `coretemp`).
     *   *Secondary Route*: Hwmon sensors: `/sys/class/hwmon/hwmon*/temp*_input` matching label files containing `Package` or `Core`.
+*   **Frequency**: Read in MHz representing active clock speeds across cores.
+    *   *Primary Route*: Average scaling frequencies from `/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq` (reported in kHz, divided by 1000).
+    *   *Secondary Route*: Fallback to `cpu.Info()` from `github.com/shirou/gopsutil/v4/cpu`, averaging the `Mhz` field from all returned `InfoStat` structs.
 
 #### B. Memory (RAM) Statistics
 *   **Total / Used / Available**: Read in bytes.
 *   **Utilization**: Total RAM utilization percentage.
 *   **Retrieval**: Captured from `/proc/meminfo` via `github.com/shirou/gopsutil/v4/mem`.
 
-#### C. Graphics Processor (GPU & VRAM) Statistics
+#### C. Graphics Processor (GPU, VRAM & Frequency) Statistics
 The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics drivers.
 *   **NVIDIA GPUs**:
     *   *Primary Method*: Communicate with the local **NVML (NVIDIA Management Library)** using standard Go API bindings (or lightweight CGO-free bindings) to extract core GPU utilization percentage, VRAM utilization, and temperature.
-    *   *Fallback Method*: Execute `nvidia-smi` as an external command:
+    *   *Fallback Method*: Execute `nvidia-smi` as an external command, querying graphic clock frequency along with existing metrics:
         ```bash
-        nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits
+        nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics --format=csv,noheader,nounits
         ```
 *   **AMD & Intel GPUs (sysfs / hwmon)**:
     *   *GPU Busy Percentage*: Read `/sys/class/drm/card0/device/gpu_busy_percent` (or `/sys/class/drm/card0/device/pm_info`).
     *   *VRAM Bytes Used*: Read `/sys/class/drm/card0/device/mem_info_vram_used`.
     *   *VRAM Bytes Total*: Read `/sys/class/drm/card0/device/mem_info_vram_total`.
     *   *GPU Temperature*: Read `/sys/class/drm/card0/device/hwmon/hwmon*/temp1_input`.
+    *   *GPU Frequency*: Query the active graphics clock frequency in MHz in order of preference:
+        1.  Intel Active Frequency: `/sys/class/drm/card*/device/gt_act_freq_mhz` (or `/sys/class/drm/card*/gt_act_freq_mhz`).
+        2.  AMD DPM System Clock: `/sys/class/drm/card*/device/pp_dpm_sclk` (parsing the active frequency marked with `*`).
+        3.  Hwmon Frequency Input: `/sys/class/drm/card*/device/hwmon/hwmon*/freq1_input` (Hz to MHz conversion).
 
 ---
 
@@ -124,13 +131,15 @@ Pushed automatically once every second.
   "data": {
     "cpu": {
       "usage_percent": 18.7,
-      "temp_celsius": 49.0
+      "temp_celsius": 49.0,
+      "freq_mhz": 3200.0
     },
     "gpu": {
       "usage_percent": 41.0,
       "temp_celsius": 58.0,
       "vram_used_bytes": 3121561600,
-      "vram_total_bytes": 8589934592
+      "vram_total_bytes": 8589934592,
+      "freq_mhz": 1200.0
     },
     "ram": {
       "used_bytes": 14212567040,

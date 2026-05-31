@@ -231,13 +231,15 @@ The daemon pushes structured telemetry payloads every second to all connected We
   "data": {
     "cpu": {
       "usage_percent": 18.7,
-      "temp_celsius": 49.0
+      "temp_celsius": 49.0,
+      "freq_mhz": 3200.0
     },
     "gpu": {
       "usage_percent": 41.0,
       "temp_celsius": 58.0,
       "vram_used_bytes": 3121561600,
-      "vram_total_bytes": 8589934592
+      "vram_total_bytes": 8589934592,
+      "freq_mhz": 1200.0
     },
     "ram": {
       "used_bytes": 14212567040,
@@ -306,7 +308,13 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. ⚡ Additional Planned Enhancements
+### 2. 🚀 CPU/GPU Frequency Telemetry 🟡 *[Design Phase]*
+Provide real-time processor and graphics clock frequency (in MHz) telemetry.
+- **Outbound Stream**: Dynamically extract average active CPU core speeds using Linux scaling interfaces or `gopsutil` fallbacks, alongside custom sysfs/NVML AMD, Intel, and NVIDIA graphics clock parsers, pushing them inside the standard 1-second telemetry payload.
+- **Inbound Triggering**: Add `--cpu-freq` and `--gpu-freq` CLI capabilities to verify custom clock frequencies instantly over Unix Domain Sockets.
+- *Status*: Architectural and schema design established. Awaiting design review and approval.
+
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

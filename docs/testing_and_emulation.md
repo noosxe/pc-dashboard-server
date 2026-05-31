@@ -32,10 +32,14 @@ To make the dashboard look realistic during client testing, the emulator generat
 *   **CPU Temperature Formula**:
     $$\text{Temp} = 40.0 + \sin(t / 8.0) \cdot 5.0 + (\text{Usage} \cdot 0.3)$$
     *Range*: $41.5^\circ\text{C}$ to $53.1^\circ\text{C}$ directly correlated with emulated CPU usage load.
+*   **CPU Frequency Formula**:
+    $$\text{FreqCPU} = 2500.0 + (\text{Usage} \cdot 20.0) + \text{random}(-5.0, 5.0)$$
+    *Range*: $2600.0$ MHz to $3040.0$ MHz directly correlated with emulated CPU usage load.
 *   **GPU Statistics**:
     *   *Usage*: $30.0 + \cos(t / 15.0) \cdot 15.0 + \text{random}(-1.0, 1.0)$
     *   *Temp*: $50.0 + \cos(t / 15.0) \cdot 8.0 + (\text{GPU\_Usage} \cdot 0.2)$
     *   *VRAM*: Total `8,589,934,592` bytes (8GB); Used bytes dynamically scale in correlation with GPU usage: $3,221,225,472 + (\text{GPU\_Usage} \cdot 20,000,000)$ bytes.
+    *   *Frequency*: $\text{FreqGPU} = 300.0 + (\text{GPU\_Usage} \cdot 15.0) + \text{random}(-2.0, 2.0)$ MHz.
 *   **RAM Statistics**:
     *   *Total*: `34,359,738,368` bytes (32GB).
     *   *Used*: Fluctuates slowly: $12,884,901,888 + \sin(t / 30.0) \cdot 1,073,741,824$ bytes.
@@ -106,7 +110,7 @@ With the daemon running in emulation mode (`--emulate-metrics --mock-adb`), deve
     ```
     *Output in console (telemetry pushes every 1s, media state on event)*:
     ```json
-    {"type":"telemetry","timestamp":1716214001,"data":{"cpu":{"usage_percent":18.45,"temp_celsius":48.2},"gpu":{"usage_percent":42.1,"temp_celsius":59.3,"vram_used_bytes":4063225472,"vram_total_bytes":8589934592},"ram":{"used_bytes":13421772800,"total_bytes":34359738368,"percentage":39.06}}}
+    {"type":"telemetry","timestamp":1716214001,"data":{"cpu":{"usage_percent":18.45,"temp_celsius":48.2,"freq_mhz":2869.0},"gpu":{"usage_percent":42.1,"temp_celsius":59.3,"vram_used_bytes":4063225472,"vram_total_bytes":8589934592,"freq_mhz":931.5},"ram":{"used_bytes":13421772800,"total_bytes":34359738368,"percentage":39.06}}}
     {"type":"media_state","timestamp":1716214002,"data":{"active_players":[{"player_name":"spotify","playback_status":"Playing","volume":0.85,"position_microseconds":45000000,"metadata":{"track_id":"spotify:track:4PTG3Z6ehGkBFm5zOHYGaS","title":"Stayin' Alive","artist":["Bee Gees"],"album":"Saturday Night Fever","art_url":"https://images.example.com/stayinalive.jpg","length_microseconds":284000000}}]}}
     ```
 *   **Send Control Command via websocat**:
@@ -148,8 +152,8 @@ Save the following code as `test_client.html` and open it in a browser:
 </head>
 <body>
     <h1>PC Dashboard Live Telemetry & Media</h1>
-    <div class="card">CPU Usage: <span id="cpu-use" class="val">--</span> % | Temp: <span id="cpu-temp" class="val">--</span> &deg;C</div>
-    <div class="card">GPU Usage: <span id="gpu-use" class="val">--</span> % | Temp: <span id="gpu-temp" class="val">--</span> &deg;C</div>
+    <div class="card">CPU Usage: <span id="cpu-use" class="val">--</span> % | Temp: <span id="cpu-temp" class="val">--</span> &deg;C | Freq: <span id="cpu-freq" class="val">--</span> MHz</div>
+    <div class="card">GPU Usage: <span id="gpu-use" class="val">--</span> % | Temp: <span id="gpu-temp" class="val">--</span> &deg;C | Freq: <span id="gpu-freq" class="val">--</span> MHz</div>
     <div class="card">RAM Usage: <span id="ram-use" class="val">--</span> %</div>
     
     <div class="card">
@@ -171,8 +175,10 @@ Save the following code as `test_client.html` and open it in a browser:
             if (msg.type === "telemetry") {
                 document.getElementById("cpu-use").textContent = msg.data.cpu.usage_percent.toFixed(1);
                 document.getElementById("cpu-temp").textContent = msg.data.cpu.temp_celsius.toFixed(1);
+                document.getElementById("cpu-freq").textContent = msg.data.cpu.freq_mhz.toFixed(0);
                 document.getElementById("gpu-use").textContent = msg.data.gpu.usage_percent.toFixed(1);
                 document.getElementById("gpu-temp").textContent = msg.data.gpu.temp_celsius.toFixed(1);
+                document.getElementById("gpu-freq").textContent = msg.data.gpu.freq_mhz.toFixed(0);
                 document.getElementById("ram-use").textContent = msg.data.ram.percentage.toFixed(1);
             }
             if (msg.type === "media_state") {
