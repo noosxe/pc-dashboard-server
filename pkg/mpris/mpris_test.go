@@ -30,6 +30,12 @@ func TestMockMPRISManager_StartAndLifecycle(t *testing.T) {
 		if player.PlayerName != "spotify" {
 			t.Errorf("Expected player spotify, got %s", player.PlayerName)
 		}
+		if player.Identity != "Spotify" {
+			t.Errorf("Expected Identity Spotify, got %s", player.Identity)
+		}
+		if player.DesktopEntry != "spotify" {
+			t.Errorf("Expected DesktopEntry spotify, got %s", player.DesktopEntry)
+		}
 		if player.PlaybackStatus != StatusPlaying {
 			t.Errorf("Expected status Playing, got %s", player.PlaybackStatus)
 		}

@@ -23,7 +23,9 @@ type PlayerMetadata struct {
 
 // PlayerState represents the complete state of a media player.
 type PlayerState struct {
-	PlayerName     string         `json:"player_name"` // e.g. "spotify", "vlc"
+	PlayerName     string         `json:"player_name"`   // D-Bus service suffix (e.g. "firefox.instance_1_63")
+	Identity       string         `json:"identity"`      // User-friendly name (e.g. "Mozilla zen")
+	DesktopEntry   string         `json:"desktop_entry"` // Desktop entry name (e.g. "zen")
 	PlaybackStatus PlaybackStatus `json:"playback_status"`
 	Volume         float64        `json:"volume"`                // 0.0 to 1.0
 	PositionMicro  int64          `json:"position_microseconds"` // current playback position
