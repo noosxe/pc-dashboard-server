@@ -40,6 +40,7 @@ func DefaultConfig() Config {
 			ServerPort:     5037,
 			TargetPackage:  "com.noosxe.pc_dashboard",
 			TargetActivity: "com.noosxe.pc_dashboard.MainActivity",
+			NoAppControl:   false,
 		},
 	}
 }

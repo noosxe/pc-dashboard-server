@@ -18,10 +18,11 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 
 - **⚡ Lightweight Telemetry Engine**: Asynchronously polls system statistics (CPU, RAM, and GPU) at a steady 1-second interval with less than 15MB of RAM footprint.
 - **🔌 Native ADB Hotplug Tracking**: Directly communicates with the ADB server (`127.0.0.1:5037`) over TCP sockets to monitor USB connections dynamically.
-- **📱 Automatic Bootstrapping**:
+- **📱 Automatic Bootstrapping & Bypassing**:
   - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
   - Launches the companion Android application activity (`com.noosxe.pc_dashboard`).
   - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
+  - Supports `--no-app-control` configuration flag to bypass automatic screen wakeup and app launch/cleanup routines for manual debugging sessions.
 - **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🔒 Session Lock/Unlock Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients upon connection, and dispatches real-time WebSocket updates, enabling companion Android app sleep states during host locks.
@@ -307,10 +308,6 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 ### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
-
-### 3. 📱 Prevent Android App Control Flag 🟡 *[Design Phase]*
-Introduce a CLI flag `--no-app-control` (and corresponding configuration option `adb.no_app_control` in `config.yaml`) that will prevent the daemon from waking/launching/closing the companion Android application for that session. This is extremely useful for debugging the Android application directly from Android Studio while the daemon handles port forwarding and telemetry streams.
-
 
 ---
 

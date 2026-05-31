@@ -20,6 +20,7 @@ type ADBConfig struct {
 	ServerPort     int    `koanf:"server_port"`
 	TargetPackage  string `koanf:"target_package"`
 	TargetActivity string `koanf:"target_activity"`
+	NoAppControl   bool   `koanf:"no_app_control"`
 }
 
 // Config represents the consolidated configuration settings.

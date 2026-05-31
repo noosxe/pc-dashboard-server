@@ -229,16 +229,20 @@ func (e *Engine) runADBTracker(ctx context.Context) error {
 
 // bootstrapDevice executes wakeup, app launch, and reverse port tunneling.
 func (e *Engine) bootstrapDevice(ctx context.Context, serial string) {
-	// 1. Wake screen
-	if err := e.adbClient.WakeDevice(ctx, serial); err != nil {
-		e.logger.Error("Failed to wake screen", "serial", serial, "error", err)
-	}
+	if e.cfg.ADB.NoAppControl {
+		e.logger.Info("Skipping wakeup and companion app launch per no-app-control configuration", "serial", serial)
+	} else {
+		// 1. Wake screen
+		if err := e.adbClient.WakeDevice(ctx, serial); err != nil {
+			e.logger.Error("Failed to wake screen", "serial", serial, "error", err)
+		}
 
-	// 2. Launch Android Companion App
-	pkg := e.cfg.ADB.TargetPackage
-	act := e.cfg.ADB.TargetActivity
-	if err := e.adbClient.LaunchApp(ctx, serial, pkg, act); err != nil {
-		e.logger.Error("Failed to launch companion app", "serial", serial, "error", err)
+		// 2. Launch Android Companion App
+		pkg := e.cfg.ADB.TargetPackage
+		act := e.cfg.ADB.TargetActivity
+		if err := e.adbClient.LaunchApp(ctx, serial, pkg, act); err != nil {
+			e.logger.Error("Failed to launch companion app", "serial", serial, "error", err)
+		}
 	}
 
 	// 3. Reverse Tunneling
@@ -350,6 +354,11 @@ func (e *Engine) handleAction(command string) {
 
 // cleanupDevices stops/kills the companion app on all active devices before exit.
 func (e *Engine) cleanupDevices() {
+	if e.cfg.ADB.NoAppControl {
+		e.logger.Info("Skipping companion app close on exit per no-app-control configuration")
+		return
+	}
+
 	e.serialsMu.RLock()
 	serials := make([]string, 0, len(e.activeSerials))
 	for serial := range e.activeSerials {

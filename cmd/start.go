@@ -29,6 +29,7 @@ var (
 	verbose           bool
 	logLevel          string
 	logFormat         string
+	noAppControl      bool
 )
 
 // StartCmd represents the start subcommand that launches the core daemon.
@@ -48,6 +49,9 @@ and loopback WebSocket streaming server.`,
 		}
 		if logFormat != "" {
 			cliFlags["daemon.log_format"] = logFormat
+		}
+		if noAppControl {
+			cliFlags["adb.no_app_control"] = true
 		}
 
 		// 2. Load merged configurations via Koanf
@@ -186,6 +190,7 @@ func init() {
 	StartCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Force log level to debug")
 	StartCmd.Flags().StringVar(&logLevel, "log-level", "", "Structured logging level (debug, info, warn, error)")
 	StartCmd.Flags().StringVar(&logFormat, "log-format", "", "Structured log output format (text, json)")
+	StartCmd.Flags().BoolVar(&noAppControl, "no-app-control", false, "Prevent the daemon from launching or closing the companion Android app")
 
 	RootCmd.AddCommand(StartCmd)
 }
