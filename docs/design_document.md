@@ -191,6 +191,10 @@ type ADBClient interface {
 *   **Implementations**:
     1.  `TCPADBClient`: Production client communicating directly over TCP socket streams with the background ADB daemon on port `5037`.
     2.  `MockADBClient`: Simulation client that triggers artificial `device online/offline` events, allowing full testing of the websocket handshake loops inside devcontainers.
+    
+> [!NOTE]
+> **App Control Bypass**: If `--no-app-control` is specified (represented by `adb.no_app_control` configuration option), the daemon will bypass calls to `WakeDevice`, `LaunchApp`, and `CloseApp`, while continuing to configure the reverse port tunnel using `ReversePort`.
+
 
 ### 4.3. Media & MPRIS Controller Interface (`MPRISManager`)
 The media playback monitoring and remote control engine communicates exclusively through this interface:

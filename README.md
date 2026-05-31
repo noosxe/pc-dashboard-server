@@ -109,6 +109,8 @@ The server exposes the `start` subcommand to boot the daemon along with several 
 | `--log-level` | | `"info"` | Sets structured logging level (`debug`, `info`, `warn`, `error`) |
 | `--log-format` | | `"text"` | Sets structured log output format (`text`, `json`) |
 | `--verbose` | `-v` | `false` | Unconditionally forces log level to `debug` |
+| `--no-app-control`| | `false` | Prevents launching or closing the companion Android app |
+
 
 *Example (Emulation/Mock Mode for Sandbox Testing):*
 ```bash
@@ -167,6 +169,7 @@ adb:
   server_port: 5037          # Port of your local ADB daemon
   target_package: "com.noosxe.pc_dashboard"
   target_activity: "com.noosxe.pc_dashboard.MainActivity"
+  no_app_control: false      # Prevents launching or closing the companion Android app
 ```
 
 #### Environment Variables
@@ -304,6 +307,10 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 ### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
+
+### 3. 📱 Prevent Android App Control Flag 🟡 *[Design Phase]*
+Introduce a CLI flag `--no-app-control` (and corresponding configuration option `adb.no_app_control` in `config.yaml`) that will prevent the daemon from waking/launching/closing the companion Android application for that session. This is extremely useful for debugging the Android application directly from Android Studio while the daemon handles port forwarding and telemetry streams.
+
 
 ---
 
