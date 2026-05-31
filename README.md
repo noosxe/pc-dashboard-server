@@ -299,13 +299,19 @@ journalctl --user -u pc-dashboard.service -f -n 100
 
 We are continuously expanding the capabilities of the PC Dashboard ecosystem. Below are the key initiatives currently planned or underway:
 
-### 1. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
+### 1. 🔋 Power Profiles Control & Sync (D-Bus) 🟡 *[Design Phase]*
+Integrate with the Linux host's D-Bus system bus via `power-profiles-daemon` to dynamically discover supported power profiles, listen for real-time active profile transitions, and set system power profiles directly from the companion Android app.
+- **Outbound Stream**: Asynchronously fetch available profiles (e.g. `power-saver`, `balanced`, `performance`) and stream real-time D-Bus `PropertiesChanged` events conveying active profile shifts.
+- **Inbound Commands**: Support WebSocket commands from the companion app (`power_profile_command`) to seamlessly write and activate system power profiles on the host machine.
+- *Status*: Detailed design, security boundaries, and WebSocket/D-Bus schemas have been documented. Awaiting design review and approval.
+
+### 2. 🔔 Desktop Notification Actions (D-Bus) 🟡 *[Design Phase]*
 Integrate with the Linux host's D-Bus session bus to correlate system-assigned notification IDs and allow the companion Android app to trigger action buttons (e.g. Reply, Dismiss, Custom actions) on intercepted notifications and close them remotely.
 - **Outbound Stream**: Intercept both method calls and method returns of desktop notifications, correlate their properties using call/reply serial numbers, and push events complete with unique notification IDs and action options.
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. ⚡ Additional Planned Enhancements
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

@@ -57,6 +57,14 @@ When the `--emulate-metrics` flag is enabled, the daemon also instantiates the `
     *   `seek` / `set_position`: Adjusts the playback position variable accordingly (bounded between 0 and track length).
     *   `set_volume`: Directly updates the volume float property (bounded between 0.0 and 1.0).
 
+#### B. Power Profiles Emulation (`MockPowerProfilesManager`)
+When the `--emulate-metrics` flag is enabled, the daemon also instantiates the `MockPowerProfilesManager` to simulate system power profiles.
+
+*   **Available Profiles**: The emulator exposes three standard profiles: `power-saver`, `balanced`, and `performance`.
+*   **Initial State**: Defaults to `balanced` as the active profile.
+*   **Command Responses**:
+    - `power_profile_command`: Updates the in-memory active profile name if the requested profile matches one of the three available profiles, and triggers an immediate broadcast of the new `power_profile_state` payload.
+
 ---
 
 ## 3. ADB Loopback Emulation (`MockADBClient`)
@@ -111,6 +119,11 @@ With the daemon running in emulation mode (`--emulate-metrics --mock-adb`), deve
     Type JSON strings directly to trigger D-Bus commands on active players:
     ```json
     { "type": "media_command", "player_name": "spotify", "command": "play_pause" }
+    ```
+*   **Send Power Profile Control Commands via websocat**:
+    Type JSON strings directly to request a system power profile transition:
+    ```json
+    { "type": "power_profile_command", "profile": "power-saver" }
     ```
 
 ---

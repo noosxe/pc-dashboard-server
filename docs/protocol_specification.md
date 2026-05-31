@@ -527,6 +527,85 @@ This is an event-driven payload pushed asynchronously by the daemon whenever the
 
 ---
 
+### 3.10. Outbound Power Profile State Payload (Host → Android Client)
+This is an event-driven payload pushed asynchronously by the daemon whenever the active power profile changes on the host system, or when a new WebSocket client connects (relaying the cached status immediately).
+
+#### JSON Schema Spec
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PowerProfileStatePush",
+  "type": "object",
+  "required": ["type", "timestamp", "data"],
+  "properties": {
+    "type": { "type": "string", "const": "power_profile_state" },
+    "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
+    "data": {
+      "type": "object",
+      "required": ["active_profile", "available_profiles"],
+      "properties": {
+        "active_profile": { "type": "string", "description": "The currently active power profile" },
+        "available_profiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["profile"],
+            "properties": {
+              "profile": { "type": "string", "description": "The name of a supported power profile" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "power_profile_state",
+  "timestamp": 1716213825,
+  "data": {
+    "active_profile": "balanced",
+    "available_profiles": [
+      { "profile": "power-saver" },
+      { "profile": "balanced" },
+      { "profile": "performance" }
+    ]
+  }
+}
+```
+
+---
+
+### 3.11. Inbound Power Profile Command Payload (Android Client → Host)
+The companion app can transmit this command over the WebSocket connection to request switching the active system power profile on the host PC.
+
+#### Request JSON Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PowerProfileCommand",
+  "type": "object",
+  "required": ["type", "profile"],
+  "properties": {
+    "type": { "type": "string", "const": "power_profile_command" },
+    "profile": { "type": "string", "description": "The name of the power profile to activate" }
+  }
+}
+```
+
+#### JSON Payload Example
+```json
+{
+  "type": "power_profile_command",
+  "profile": "power-saver"
+}
+```
+
+---
+
 ## 4. Connection State Machine & Recovery
 
 ```
@@ -592,7 +671,7 @@ Command clients transmit a single JSON object frame upon successful socket dial.
   "properties": {
     "type": { 
       "type": "string", 
-      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "raw"] 
+      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "power_profile_state", "raw"] 
     },
     "data": { 
       "type": "object",
@@ -642,7 +721,12 @@ Triggers CPU/RAM/GPU telemetry metrics update.
 *   **Request Data Schema**: See SystemMetrics schema defined in `3.1 Outbound Telemetry Payload`.
 *   **Daemon Action**: Wraps under `TelemetryPayload` and broadcasts.
 
-##### E. `raw` (Arbitrary Passthrough Payload)
+##### E. `power_profile_state` (Power Profile Event)
+Triggers power profile state update.
+*   **Request Data Schema**: See PowerProfileState schema defined in `3.10 Outbound Power Profile State Payload`.
+*   **Daemon Action**: Wraps under `PowerProfileStatePayload` (attaching current server timestamp) and broadcasts.
+
+##### F. `raw` (Arbitrary Passthrough Payload)
 Directly relays custom JSON types to WebSockets without daemon verification.
 *   **Request Format**:
     ```json
