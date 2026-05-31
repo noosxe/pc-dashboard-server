@@ -305,7 +305,13 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. ⚡ Additional Planned Enhancements
+### 2. 📱 Android Screen Wake & Sleep Control (ADB DPMS Sync) 🟡 *[Design Phase]*
+Automatically put the connected Android device screen to sleep when the host session is locked (DPMS off equivalent) and wake it up when the host session is unlocked (DPMS on equivalent) using native non-toggling ADB shell keyevent commands.
+- **Wake Device (DPMS On)**: Send `shell:input keyevent KEYCODE_WAKEUP` (`224`) command over length-prefixed ADB socket TCP streams.
+- **Sleep Device (DPMS Off)**: Send `shell:input keyevent KEYCODE_SLEEP` (`223`) command over length-prefixed ADB socket TCP streams.
+- *Status*: Design and specs updated in specs.md and implementation plan created. Awaiting design review and approval.
+
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
