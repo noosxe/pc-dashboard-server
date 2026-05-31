@@ -25,7 +25,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Supports `--no-app-control` configuration flag to bypass automatic screen wakeup and app launch/cleanup routines for manual debugging sessions.
 - **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces.
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
-- **🔒 Session Lock/Unlock Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients upon connection, and dispatches real-time WebSocket updates, enabling companion Android app sleep states during host locks.
+- **🔒 Session Lock & ADB Screen Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients. Dynamically coordinates screen power states, leveraging native ADB shell keyevents to explicitly wake (`KEYCODE_WAKEUP`) or sleep (`KEYCODE_SLEEP`) the companion Android device screen synchronously with host display power (DPMS off/on) transitions (fully bypassable via `--no-app-control`).
 - **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
@@ -305,13 +305,7 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. 📱 Android Screen Wake & Sleep Control (ADB DPMS Sync) 🟡 *[Design Phase]*
-Automatically put the connected Android device screen to sleep when the host session is locked (DPMS off equivalent) and wake it up when the host session is unlocked (DPMS on equivalent) using native non-toggling ADB shell keyevent commands.
-- **Wake Device (DPMS On)**: Send `shell:input keyevent KEYCODE_WAKEUP` (`224`) command over length-prefixed ADB socket TCP streams.
-- **Sleep Device (DPMS Off)**: Send `shell:input keyevent KEYCODE_SLEEP` (`223`) command over length-prefixed ADB socket TCP streams.
-- *Status*: Design and specs updated in specs.md and implementation plan created. Awaiting design review and approval.
-
-### 3. ⚡ Additional Planned Enhancements
+### 2. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

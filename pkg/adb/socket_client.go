@@ -233,6 +233,28 @@ func (c *SocketADBClient) WakeDevice(ctx context.Context, serial string) error {
 	return nil
 }
 
+// SleepDevice sends screen sleep keyevent.
+func (c *SocketADBClient) SleepDevice(ctx context.Context, serial string) error {
+	conn, err := c.connectToDevice(ctx, serial)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	cmd := "shell:input keyevent KEYCODE_SLEEP"
+	if err := writeFrame(conn, cmd); err != nil {
+		return fmt.Errorf("failed to send sleep command: %w", err)
+	}
+
+	if err := checkOkay(conn); err != nil {
+		return fmt.Errorf("sleep command rejected: %w", err)
+	}
+
+	// Read response until EOF to ensure the command executes to completion.
+	_, _ = io.Copy(io.Discard, conn)
+	return nil
+}
+
 // CloseApp stops/kills the target companion application activity via raw shell command.
 func (c *SocketADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
 	conn, err := c.connectToDevice(ctx, serial)

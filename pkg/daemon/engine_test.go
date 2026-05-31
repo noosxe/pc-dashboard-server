@@ -121,6 +121,7 @@ func (m *manualLockManager) Start(ctx context.Context) (<-chan lock.SessionLockE
 
 type trackingADBClient struct {
 	wakeCalled   bool
+	sleepCalled  bool
 	launchCalled bool
 	closeCalled  bool
 }
@@ -137,6 +138,10 @@ func (c *trackingADBClient) LaunchApp(ctx context.Context, serial string, pkg, a
 }
 func (c *trackingADBClient) WakeDevice(ctx context.Context, serial string) error {
 	c.wakeCalled = true
+	return nil
+}
+func (c *trackingADBClient) SleepDevice(ctx context.Context, serial string) error {
+	c.sleepCalled = true
 	return nil
 }
 func (c *trackingADBClient) CloseApp(ctx context.Context, serial string, pkg string) error {
@@ -197,5 +202,85 @@ func TestEngine_AppControlEnabled(t *testing.T) {
 
 	if !ac.closeCalled {
 		t.Error("expected CloseApp to be called when NoAppControl is false")
+	}
+}
+
+func TestEngine_LockUnlockTriggersAdb(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	cfg := &config.Config{}
+	cfg.ADB.NoAppControl = false
+
+	ac := &trackingADBClient{}
+	lockEvents := make(chan lock.SessionLockEvent, 5)
+	lm := &manualLockManager{events: lockEvents}
+
+	engine := NewEngine(cfg, nil, ac, nil, nil, lm, logger, logger)
+	engine.activeSerials["TEST_SERIAL"] = true
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := engine.runLockMonitor(ctx); err != nil {
+			logger.Error("runLockMonitor error", "err", err)
+		}
+	}()
+
+	// 1. Send Lock event -> Screen Sleep
+	lockEvents <- lock.SessionLockEvent{Locked: true}
+	// Wait brief moment for goroutine
+	time.Sleep(50 * time.Millisecond)
+
+	if !ac.sleepCalled {
+		t.Error("expected SleepDevice to be called on session lock")
+	}
+
+	// 2. Send Unlock event -> Screen Wake
+	ac.wakeCalled = false // reset flag
+	lockEvents <- lock.SessionLockEvent{Locked: false}
+	time.Sleep(50 * time.Millisecond)
+
+	if !ac.wakeCalled {
+		t.Error("expected WakeDevice to be called on session unlock")
+	}
+}
+
+func TestEngine_LockUnlockNoAppControl(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	cfg := &config.Config{}
+	cfg.ADB.NoAppControl = true
+
+	ac := &trackingADBClient{}
+	lockEvents := make(chan lock.SessionLockEvent, 5)
+	lm := &manualLockManager{events: lockEvents}
+
+	engine := NewEngine(cfg, nil, ac, nil, nil, lm, logger, logger)
+	engine.activeSerials["TEST_SERIAL"] = true
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := engine.runLockMonitor(ctx); err != nil {
+			logger.Error("runLockMonitor error", "err", err)
+		}
+	}()
+
+	// 1. Send Lock event
+	lockEvents <- lock.SessionLockEvent{Locked: true}
+	time.Sleep(50 * time.Millisecond)
+
+	if ac.sleepCalled {
+		t.Error("expected SleepDevice NOT to be called on session lock when NoAppControl is true")
+	}
+
+	// 2. Send Unlock event
+	lockEvents <- lock.SessionLockEvent{Locked: false}
+	time.Sleep(50 * time.Millisecond)
+
+	if ac.wakeCalled {
+		t.Error("expected WakeDevice NOT to be called on session unlock when NoAppControl is true")
 	}
 }

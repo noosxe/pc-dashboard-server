@@ -446,6 +446,35 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 				Data:      ev,
 			}
 			e.pool.Broadcast(payload)
+
+			// Handle companion app screen wake/sleep via ADB
+			if !e.cfg.ADB.NoAppControl {
+				e.serialsMu.RLock()
+				serials := make([]string, 0, len(e.activeSerials))
+				for serial := range e.activeSerials {
+					serials = append(serials, serial)
+				}
+				e.serialsMu.RUnlock()
+
+				for _, serial := range serials {
+					go func(s string, locked bool) {
+						adbCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						defer cancel()
+
+						if locked {
+							e.logger.Info("Power event (DPMS off/Lock): putting Android screen to sleep", "serial", s)
+							if err := e.adbClient.SleepDevice(adbCtx, s); err != nil {
+								e.logger.Error("Failed to sleep screen via ADB", "serial", s, "error", err)
+							}
+						} else {
+							e.logger.Info("Power event (DPMS on/Unlock): waking Android screen", "serial", s)
+							if err := e.adbClient.WakeDevice(adbCtx, s); err != nil {
+								e.logger.Error("Failed to wake screen via ADB", "serial", s, "error", err)
+							}
+						}
+					}(serial, ev.Locked)
+				}
+			}
 		}
 	}
 }
