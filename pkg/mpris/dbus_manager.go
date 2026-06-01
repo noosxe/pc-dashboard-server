@@ -552,7 +552,13 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		if val, ok := changedProps["Metadata"]; ok {
 			m.logger.Info("D-Bus signal changedProps contains Metadata")
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
-				player.Metadata = m.parseMetadata(rawMeta)
+				newMeta := m.parseMetadata(rawMeta)
+				// Preserve existing base64 artwork if the new metadata update lacks it but is the same track/title
+				if newMeta.ArtURL == "" && player.Metadata.ArtURL != "" && newMeta.Title == player.Metadata.Title {
+					m.logger.Info("Preserving existing processed artwork for the same track", "title", newMeta.Title)
+					newMeta.ArtURL = player.Metadata.ArtURL
+				}
+				player.Metadata = newMeta
 				updated = true
 				m.logger.Info("MPRIS player Metadata changed and parsed successfully", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
 			} else {
