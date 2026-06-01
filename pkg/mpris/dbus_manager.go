@@ -524,8 +524,13 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		m.mu.Lock()
 		player, exists := m.activePlayers[sig.Sender]
 		if !exists {
+			knownPlayers := make([]string, 0, len(m.activePlayers))
+			for owner, p := range m.activePlayers {
+				knownPlayers = append(knownPlayers, fmt.Sprintf("%s (%s/%s)", owner, p.PlayerName, p.Identity))
+			}
 			m.mu.Unlock()
-			m.logger.Info("PropertiesChanged received but player not registered in activePlayers", "sender", sig.Sender)
+			m.logger.Info("PropertiesChanged received but player not registered in activePlayers",
+				"sender", sig.Sender, "known_players", knownPlayers)
 			return
 		}
 
