@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ArtworkExtractor resolves local artwork files (file:// URIs or absolute paths)
@@ -63,9 +64,27 @@ func (e *ArtworkExtractor) Extract(artURL string) string {
 	}
 
 	// 4. Verify path existence and ensure it is not a directory
-	info, err := os.Stat(cleanPath)
-	if err != nil {
-		e.logger.Debug("Local artwork file could not be accessed", "path", cleanPath, "error", err)
+	// First check if the parent directory exists. If it does not, skip the retry loop immediately.
+	parentDir := filepath.Dir(cleanPath)
+	if _, err := os.Stat(parentDir); err != nil {
+		e.logger.Debug("Parent directory of local artwork does not exist, skipping extraction", "path", cleanPath, "parent", parentDir)
+		return ""
+	}
+
+	// Retry loop handles the race condition where the browser fires the D-Bus signal
+	// before the asynchronous file write of the cover art is completed and flushed.
+	var info os.FileInfo
+	var statErr error
+	for i := 0; i < 6; i++ {
+		info, statErr = os.Stat(cleanPath)
+		if statErr == nil && info.Size() > 0 && !info.IsDir() {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if statErr != nil {
+		e.logger.Debug("Local artwork file could not be accessed after retries", "path", cleanPath, "error", statErr)
 		return ""
 	}
 
