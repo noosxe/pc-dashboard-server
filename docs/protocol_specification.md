@@ -221,7 +221,7 @@ This is an event-driven payload pushed asynchronously by the daemon whenever:
                   "title": { "type": "string" },
                   "artist": { "type": "array", "items": { "type": "string" } },
                   "album": { "type": "string" },
-                  "art_url": { "type": "string", "format": "uri" },
+                  "art_url": { "type": "string", "format": "uri", "description": "Remote HTTP/HTTPS URL or portable Base64-encoded Data URL (e.g. data:image/png;base64,...) for local media files" },
                   "length_microseconds": { "type": "integer", "minimum": 0 }
                 }
               }

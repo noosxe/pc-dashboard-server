@@ -267,6 +267,11 @@ type MPRISManager interface {
           - *Tier 1: MPRIS Identity Property*: Fetches `org.mpris.MediaPlayer2.Identity` directly from the D-Bus object path `/org/mpris/MediaPlayer2`.
           - *Tier 2: MPRIS DesktopEntry Property*: Fetches `org.mpris.MediaPlayer2.DesktopEntry` (e.g. `"zen"`), then scans standard XDG applications directories (`$XDG_DATA_DIRS/applications/` and `~/.local/share/applications/`) to parse `[desktopEntry].desktop` and read its user-facing `Name=` field.
           - *Tier 3: PID Executable Resolution*: Queries D-Bus connection Unix Process ID (`org.freedesktop.DBus.GetConnectionUnixProcessID`), reads `/proc/<pid>/exe` to extract the binary basename (e.g. `"zen"`), and uses it to find/parse corresponding `.desktop` entries.
+        - **Artwork Extraction Engine (`ArtworkExtractor`)**: Intercepts `mpris:artUrl` strings and processes them to ensure they can be rendered on remote companion applications:
+          - *Local File Identification*: Detects if the URI starts with `file://` / `file:` or is an absolute local path.
+          - *Security Bounds Checking*: Validates path integrity and enforces a strict file-size limit of **256 KB** (262,144 bytes) to prevent resource exhaustion and huge WebSocket payloads.
+          - *Standardized Base64 Encoding*: Reads the file and encodes it into a standard Base64 Data URL (e.g., `data:image/png;base64,...` or `data:image/jpeg;base64,...`) corresponding to the file extension.
+          - *Thread-Safe Caching*: Caches resolved Base64 payloads inside a thread-safe `sync.Map` to eliminate redundant disk reads on repeated property queries.
     2.  `MockMPRISManager`: Simulation client that generates fluctuating player progress and rotates song metadata for local emulation.
 
 ### 4.4. Notification Manager Interface (`NotificationManager`)

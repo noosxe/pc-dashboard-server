@@ -321,7 +321,13 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. ⚡ Additional Planned Enhancements
+### 3. 🎵 MPRIS Local Artwork Base64 Extraction 🟡 *[Design Phase]*
+Support automated extraction, validation, and Base64-encoding of local track/album artwork (e.g. `file://` URIs and absolute filesystem paths) within the MPRIS controller module. This enables the remote companion Android app to display track artwork for local media playbacks without direct filesystem access to the host PC.
+- **Outbound Stream**: Intercept `file://` URIs and absolute local paths in `mpris:artUrl` and encode them into Base64-encoded PNG/JPEG data URLs (`data:image/...;base64,...`), which are fully portable and displayable on remote clients.
+- **Security & Performance**: Enforce a strict file-size cap of 256 KB to mitigate memory spikes and keep WebSocket transport lightweight, combined with thread-safe caching to avoid redundant disk I/O.
+- *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
