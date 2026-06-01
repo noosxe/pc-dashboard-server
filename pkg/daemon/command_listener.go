@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/noosxe/pc-dashboard-server/pkg/dpms"
 	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
@@ -117,6 +118,52 @@ func (e *Engine) handleCommandConnection(conn net.Conn) {
 
 		broadcastPayload = SessionLockPayload{
 			Type:      "session_lock",
+			Timestamp: time.Now().Unix(),
+			Data:      ev,
+		}
+
+	case "dpms":
+		var ev dpms.DpmsEvent
+		if err := json.Unmarshal(req.Data, &ev); err != nil {
+			e.writeUDSResponse(conn, UDSResponse{Success: false, Error: "failed to decode dpms data: " + err.Error()})
+			return
+		}
+		// Cache the DPMS state
+		e.dpmsStateMu.Lock()
+		e.lastDpmsState = &ev
+		e.dpmsStateMu.Unlock()
+
+		// Actively wake/sleep physical companion device screen synchronously over ADB if not no-app-control
+		if !e.cfg.ADB.NoAppControl {
+			e.serialsMu.RLock()
+			serials := make([]string, 0, len(e.activeSerials))
+			for serial := range e.activeSerials {
+				serials = append(serials, serial)
+			}
+			e.serialsMu.RUnlock()
+
+			for _, serial := range serials {
+				go func(s string, state string) {
+					adbCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+
+					if state == "off" {
+						e.logger.Info("Power event (DPMS off/Command): putting Android screen to sleep", "serial", s)
+						if err := e.adbClient.SleepDevice(adbCtx, s); err != nil {
+							e.logger.Error("Failed to sleep screen via ADB", "serial", s, "error", err)
+						}
+					} else {
+						e.logger.Info("Power event (DPMS on/Command): waking Android screen", "serial", s)
+						if err := e.adbClient.WakeDevice(adbCtx, s); err != nil {
+							e.logger.Error("Failed to wake screen via ADB", "serial", s, "error", err)
+						}
+					}
+				}(serial, ev.State)
+			}
+		}
+
+		broadcastPayload = DpmsStatePayload{
+			Type:      "dpms_state",
 			Timestamp: time.Now().Unix(),
 			Data:      ev,
 		}

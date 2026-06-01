@@ -12,6 +12,7 @@ import (
 
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
+	"github.com/noosxe/pc-dashboard-server/pkg/dpms"
 	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
@@ -35,8 +36,9 @@ func TestEngine_CommandListenerHandshake(t *testing.T) {
 	mm := mpris.NewMockMPRISManager(logger)
 	lm := lock.NewMockLockManager(logger)
 	pm := power.NewMockPowerProfilesManager(logger)
+	dm := dpms.NewMockDpmsManager(logger)
 
-	engine := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
+	engine := NewEngine(cfg, mr, ac, nm, mm, lm, pm, dm, logger, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -129,6 +131,42 @@ func TestEngine_CommandListenerHandshake(t *testing.T) {
 		}
 	}
 
+	// Test DPMS state trigger
+	conn4, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to dial command socket for DPMS: %v", err)
+	}
+
+	dpmsReq := UDSRequest{
+		Type: "dpms",
+		Data: json.RawMessage(`{"state": "off"}`),
+	}
+
+	if err := json.NewEncoder(conn4).Encode(dpmsReq); err != nil {
+		t.Fatalf("failed to write DPMS request: %v", err)
+	}
+
+	var dpmsResp UDSResponse
+	if err := json.NewDecoder(conn4).Decode(&dpmsResp); err != nil {
+		t.Fatalf("failed to read DPMS response: %v", err)
+	}
+	conn4.Close()
+
+	if !dpmsResp.Success {
+		t.Errorf("expected DPMS trigger success=true, got success=false, error=%q", dpmsResp.Error)
+	}
+
+	// Verify the DPMS state caching inside engine
+	engine.dpmsStateMu.RLock()
+	cachedDpmsState := engine.lastDpmsState
+	engine.dpmsStateMu.RUnlock()
+
+	if cachedDpmsState == nil {
+		t.Errorf("expected lastDpmsState to be cached, got nil")
+	} else if cachedDpmsState.State != "off" {
+		t.Errorf("expected cached lastDpmsState to be 'off', got %q", cachedDpmsState.State)
+	}
+
 	// 4. Send a command request with malformed inner data
 	conn2, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -171,9 +209,10 @@ func TestEngine_CommandListenerConflict(t *testing.T) {
 	mm := mpris.NewMockMPRISManager(logger)
 	lm := lock.NewMockLockManager(logger)
 	pm := power.NewMockPowerProfilesManager(logger)
+	dm := dpms.NewMockDpmsManager(logger)
 
-	engine1 := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
-	engine2 := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
+	engine1 := NewEngine(cfg, mr, ac, nm, mm, lm, pm, dm, logger, logger)
+	engine2 := NewEngine(cfg, mr, ac, nm, mm, lm, pm, dm, logger, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

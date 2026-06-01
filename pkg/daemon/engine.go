@@ -9,6 +9,7 @@ import (
 
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
+	"github.com/noosxe/pc-dashboard-server/pkg/dpms"
 	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
@@ -52,6 +53,13 @@ type PowerProfileStatePayload struct {
 	Data      power.PowerProfileState `json:"data"`
 }
 
+// DpmsStatePayload outlines the outer JSON wrapper broadcasted to clients for display power states.
+type DpmsStatePayload struct {
+	Type      string         `json:"type"`
+	Timestamp int64          `json:"timestamp"`
+	Data      dpms.DpmsEvent `json:"data"`
+}
+
 // Engine coordinates telemetry polling, ADB physical monitoring, and WebSocket distribution.
 type Engine struct {
 	logger           *slog.Logger
@@ -62,6 +70,7 @@ type Engine struct {
 	mprisMgr         mpris.MPRISManager
 	lockMgr          lock.LockManager
 	powerProfilesMgr power.PowerProfilesManager
+	dpmsMgr          dpms.DpmsManager
 	pool             *websocket.ConnectionPool
 	wsServer         *websocket.Server
 	intervalMu       sync.Mutex
@@ -73,10 +82,12 @@ type Engine struct {
 	lastLockState    *lock.SessionLockEvent
 	powerStateMu     sync.RWMutex
 	lastPowerState   *power.PowerProfileState
+	dpmsStateMu      sync.RWMutex
+	lastDpmsState    *dpms.DpmsEvent
 }
 
 // NewEngine constructs a central Orchestrator.
-func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, lm lock.LockManager, pm power.PowerProfilesManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
+func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, nm notifications.NotificationManager, mm mpris.MPRISManager, lm lock.LockManager, pm power.PowerProfilesManager, dm dpms.DpmsManager, daemonLogger *slog.Logger, websocketLogger *slog.Logger) *Engine {
 	e := &Engine{
 		logger:           daemonLogger,
 		cfg:              cfg,
@@ -86,6 +97,7 @@ func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, n
 		mprisMgr:         mm,
 		lockMgr:          lm,
 		powerProfilesMgr: pm,
+		dpmsMgr:          dm,
 		interval:         time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
 		resetChan:        make(chan time.Duration, 5),
 		activeSerials:    make(map[string]bool),
@@ -154,6 +166,14 @@ func (e *Engine) Start(ctx context.Context) error {
 	go func() {
 		if err := e.runPowerProfilesMonitor(gCtx); err != nil {
 			e.logger.Error("Power profiles monitor terminated", "error", err)
+			errChan <- err
+		}
+	}()
+
+	// 9. Boot Display Power (DPMS) monitoring thread
+	go func() {
+		if err := e.runDpmsMonitor(gCtx); err != nil {
+			e.logger.Error("DPMS monitor terminated", "error", err)
 			errChan <- err
 		}
 	}()
@@ -467,6 +487,40 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 			}
 			e.pool.Broadcast(payload)
 
+			// Dynamically adjust telemetry poll interval to conserve power while locked
+			e.updateIntervalForLockState(ev.Locked)
+		}
+	}
+}
+
+// runDpmsMonitor monitors display power (DPMS) events and coordinates Android screen sleep/wake.
+func (e *Engine) runDpmsMonitor(ctx context.Context) error {
+	events, err := e.dpmsMgr.Start(ctx)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-events:
+			if !ok {
+				return nil
+			}
+
+			// Cache the last DPMS state event
+			e.dpmsStateMu.Lock()
+			e.lastDpmsState = &ev
+			e.dpmsStateMu.Unlock()
+
+			payload := DpmsStatePayload{
+				Type:      "dpms_state",
+				Timestamp: time.Now().Unix(),
+				Data:      ev,
+			}
+			e.pool.Broadcast(payload)
+
 			// Handle companion app screen wake/sleep via ADB
 			if !e.cfg.ADB.NoAppControl {
 				e.serialsMu.RLock()
@@ -477,24 +531,54 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 				e.serialsMu.RUnlock()
 
 				for _, serial := range serials {
-					go func(s string, locked bool) {
+					go func(s string, state string) {
 						adbCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 						defer cancel()
 
-						if locked {
-							e.logger.Info("Power event (DPMS off/Lock): putting Android screen to sleep", "serial", s)
+						if state == "off" {
+							e.logger.Info("Power event (DPMS off): putting Android screen to sleep", "serial", s)
 							if err := e.adbClient.SleepDevice(adbCtx, s); err != nil {
 								e.logger.Error("Failed to sleep screen via ADB", "serial", s, "error", err)
 							}
 						} else {
-							e.logger.Info("Power event (DPMS on/Unlock): waking Android screen", "serial", s)
+							e.logger.Info("Power event (DPMS on): waking Android screen", "serial", s)
 							if err := e.adbClient.WakeDevice(adbCtx, s); err != nil {
 								e.logger.Error("Failed to wake screen via ADB", "serial", s, "error", err)
 							}
 						}
-					}(serial, ev.Locked)
+					}(serial, ev.State)
 				}
 			}
+		}
+	}
+}
+
+// updateIntervalForLockState adjusts the telemetry polling interval based on locked/unlocked state.
+func (e *Engine) updateIntervalForLockState(locked bool) {
+	var intervalMs int
+	if locked {
+		intervalMs = e.cfg.Daemon.LockedUpdateIntervalMS
+	} else {
+		intervalMs = e.cfg.Daemon.UpdateIntervalMS
+	}
+	e.logger.Info("Session lock state changed telemetry polling interval", "locked", locked, "interval_ms", intervalMs)
+
+	duration := time.Duration(intervalMs) * time.Millisecond
+	e.intervalMu.Lock()
+	e.interval = duration
+	e.intervalMu.Unlock()
+
+	// Safely reset the interval ticker
+	select {
+	case e.resetChan <- duration:
+	default:
+		select {
+		case <-e.resetChan:
+		default:
+		}
+		select {
+		case e.resetChan <- duration:
+		default:
 		}
 	}
 }
@@ -537,6 +621,25 @@ func (e *Engine) handleClientConnect(conn *websocket.ClientConn) {
 		}
 	} else {
 		e.logger.Debug("No initial power profile state cached, skipping push")
+	}
+
+	e.dpmsStateMu.RLock()
+	dState := e.lastDpmsState
+	e.dpmsStateMu.RUnlock()
+
+	if dState != nil {
+		payload := DpmsStatePayload{
+			Type:      "dpms_state",
+			Timestamp: time.Now().Unix(),
+			Data:      *dState,
+		}
+		if err := conn.WriteJSON(payload); err != nil {
+			e.logger.Error("Failed to send initial DPMS display power state to client", "error", err)
+		} else {
+			e.logger.Info("Sent initial DPMS display power state to client", "state", dState.State)
+		}
+	} else {
+		e.logger.Debug("No initial DPMS display power state cached, skipping push")
 	}
 }
 
