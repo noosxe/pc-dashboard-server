@@ -25,7 +25,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Registers a reverse TCP forward tunnel (`reverse:forward:tcp:12345;tcp:12345`), routing the USB communication securely.
   - Supports `--no-app-control` configuration flag to bypass automatic screen wakeup and app launch/cleanup routines for manual debugging sessions.
 - **🎵 MPRIS Media Player Control (D-Bus)**: Dynamic monitoring and control of active media players (e.g. Spotify, VLC, Firefox) on the host PC. Intercepts metadata, playback status, volume, and progress, and dispatches real-time WebSocket control commands back to system players via standard D-Bus session interfaces. Features a **Tiered Friendly Name Resolution Engine** that maps raw service name suffixes (like `"firefox.instance_1_63"`) to proper human-readable application names (like `"Mozilla zen"` or `"Zen Browser"`) by querying MPRIS branding properties, parsing XDG `.desktop` files, and performing process executable lookups.
-- **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
+- **🔔 Desktop Notifications Sync & Icon Delivery (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands. Features a **2-Tier Icon Resolution & Delivery Pipeline** that asynchronously extracts application icons and custom image avatars from D-Bus hints (raw pixel arrays), absolute filesystem paths, and XDG desktop themed lookups, encoding them into compressed Base64 PNGs/SVGs for instantaneous recognition on the companion app.
 - **🔒 Session Lock & Telemetry Throttle (D-Bus)**: Event-driven interception of host user session lock and unlock transitions via systemd-logind system bus and screensaver session bus signals. When locked, the companion Android dashboard remains awake but transitions into a low-power, customized dashboard lockscreen UI to prevent burn-in. Telemetry update frequency is dynamically throttled to a configurable rate (default 5s) during locks to conserve host CPU and tablet battery. Caches the last known lock state in memory to instantly synchronize newly connected clients.
 - **🖥️ Display Power Management (DPMS) ADB Screen Sync**: Event-driven tracking of host physical display power events (On/Off) via native D-Bus properties for GNOME/Mutter (`PowerSaveMode`) and KDE/Plasma, or via independent Unix Domain Socket (UDS) trigger commands for minimalist compositors (like Hyprland and Sway). Coordinates Android screen sleep (`KEYCODE_SLEEP`) and wake (`KEYCODE_WAKEUP`) states via direct ADB socket keyevents synchronously with the host monitor.
 - **🔋 Power Profiles Control & Sync (D-Bus)**: Real-time discovery, state monitoring, and direct control of host power profiles (e.g. `power-saver`, `balanced`, `performance`) via standard system D-Bus interfaces targeting `power-profiles-daemon`. Includes full input sanitization boundaries validating inbound profile requests against system-supported power options before execution.
@@ -321,17 +321,7 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-
-### 3. 🖼️ Notification Icon Synchronization & Delivery 🟡 *[Design Phase]*
-Provide a robust 2-tier resolution mechanism for desktop notification icons:
-- **Tier 1 (Android Client)**: Use a pre-packaged asset library for common applications (e.g. Slack, Spotify, Discord).
-- **Tier 2 (Go Daemon)**: Resolve and serialize icons from three distinct sources on the host system as fallback:
-  - **Raw D-Bus image-data/icon_data hints**: Decodes and PNG-compresses raw pixel arrays asynchronously.
-  - **Absolute local paths**: Identifies and encodes local file paths to Base64.
-  - **Themed icons**: Matches `app_icon` names against system themes by scanning XDG `.desktop` paths.
-- *Status*: Detailed architecture and protocol specifications established. Awaiting design review and approval.
-
-### 4. ⚡ Additional Planned Enhancements
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
