@@ -17,6 +17,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 ## ✨ Features
 
 - **⚡ Lightweight Telemetry Engine**: Asynchronously polls system statistics (CPU, RAM, and GPU) at a steady 1-second interval with less than 15MB of RAM footprint.
+- **🚀 CPU/GPU Frequency Telemetry**: Dynamically extracts active core speeds and graphics engine clock rates (in MHz) every second. Queries average active CPU frequencies via Linux `/sys` scaling interfaces or `gopsutil` CPU core fallbacks. For graphics processors, utilizes custom active frequency sysfs interfaces or dynamic DPM system clock registers for AMD/Intel, alongside CGO-free NVML bindings or structured `nvidia-smi` parses for NVIDIA. Includes full integration with local Unix Domain Socket (UDS) trigger capabilities (`--cpu-freq` and `--gpu-freq`).
 - **🔌 Native ADB Hotplug Tracking**: Directly communicates with the ADB server (`127.0.0.1:5037`) over TCP sockets to monitor USB connections dynamically.
 - **📱 Automatic Bootstrapping & Bypassing**:
   - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
@@ -313,13 +314,7 @@ Integrate with the Linux host's D-Bus session bus to correlate system-assigned n
 - **Inbound Commands**: Support WebSocket commands from the companion app to execute a notification action (`notification_action_command`) or close/dismiss a notification (`notification_dismiss_command`).
 - *Status*: Detailed design and protocols have been established. Awaiting design review and approval.
 
-### 2. 🚀 CPU/GPU Frequency Telemetry 🟡 *[Design Phase]*
-Provide real-time processor and graphics clock frequency (in MHz) telemetry.
-- **Outbound Stream**: Dynamically extract average active CPU core speeds using Linux scaling interfaces or `gopsutil` fallbacks, alongside custom sysfs/NVML AMD, Intel, and NVIDIA graphics clock parsers, pushing them inside the standard 1-second telemetry payload.
-- **Inbound Triggering**: Add `--cpu-freq` and `--gpu-freq` CLI capabilities to verify custom clock frequencies instantly over Unix Domain Sockets.
-- *Status*: Architectural and schema design established. Awaiting design review and approval.
-
-### 3. 🔵 Bluetooth Device Monitoring (D-Bus / BlueZ) 🟡 *[Design Phase]*
+### 2. 🔵 Bluetooth Device Monitoring (D-Bus / BlueZ) 🟡 *[Design Phase]*
 Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system service and stream real-time events to the companion Android app.
 - **Outbound Stream**: Emit `connected`, `disconnected`, and `updated` events whenever a Bluetooth device connects, disconnects, or changes battery/RSSI. Push a full `connected_devices` snapshot to newly connected clients. Cache state for instant synchronization.
 - **Periodic Battery & RSSI Reporting**: Poll `org.bluez.Battery1.Percentage` and `org.bluez.Device1.RSSI` for connected devices at a configurable interval (default 30s). Only emit updates when values actually change.
@@ -327,7 +322,7 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
 
-### 4. ⚡ Additional Planned Enhancements
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

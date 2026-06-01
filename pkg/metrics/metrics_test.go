@@ -20,6 +20,10 @@ func TestMockMetricsReader_CPU(t *testing.T) {
 	if metrics.TempCelsius < 15.0 || metrics.TempCelsius > 110.0 {
 		t.Errorf("expected CPU TempCelsius in realistic bounds, got %f", metrics.TempCelsius)
 	}
+
+	if metrics.FreqMHz < 500.0 || metrics.FreqMHz > 8000.0 {
+		t.Errorf("expected CPU FreqMHz in realistic bounds, got %f", metrics.FreqMHz)
+	}
 }
 
 func TestMockMetricsReader_RAM(t *testing.T) {
@@ -63,5 +67,9 @@ func TestMockMetricsReader_GPU(t *testing.T) {
 
 	if metrics.VramUsedBytes > metrics.VramTotalBytes {
 		t.Errorf("expected GPU VramUsedBytes (%d) to be <= VramTotalBytes (%d)", metrics.VramUsedBytes, metrics.VramTotalBytes)
+	}
+
+	if metrics.FreqMHz < 100.0 || metrics.FreqMHz > 4000.0 {
+		t.Errorf("expected GPU FreqMHz in realistic bounds, got %f", metrics.FreqMHz)
 	}
 }

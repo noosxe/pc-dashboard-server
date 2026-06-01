@@ -37,9 +37,13 @@ func (r *MockMetricsReader) ReadCPU() (CPUMetrics, error) {
 
 	temp := 40.0 + math.Sin(t/8.0)*5.0 + (usage * 0.3)
 
+	jitterFreq := (r.randSrc.Float64() * 10.0) - 5.0 // random(-5.0, 5.0)
+	freq := 2500.0 + (usage * 20.0) + jitterFreq
+
 	return CPUMetrics{
 		UsagePercent: math.Round(usage*100) / 100,
 		TempCelsius:  math.Round(temp*100) / 100,
+		FreqMHz:      math.Round(freq*100) / 100,
 	}, nil
 }
 
@@ -76,10 +80,14 @@ func (r *MockMetricsReader) ReadGPU() (GPUMetrics, error) {
 	totalVram := uint64(8589934592) // 8GB
 	usedVram := float64(3221225472) + (usage * 20000000.0)
 
+	jitterFreq := (r.randSrc.Float64() * 4.0) - 2.0 // random(-2.0, 2.0)
+	freq := 300.0 + (usage * 15.0) + jitterFreq
+
 	return GPUMetrics{
 		UsagePercent:   math.Round(usage*100) / 100,
 		TempCelsius:    math.Round(temp*100) / 100,
 		VramUsedBytes:  uint64(usedVram),
 		VramTotalBytes: totalVram,
+		FreqMHz:        math.Round(freq*100) / 100,
 	}, nil
 }

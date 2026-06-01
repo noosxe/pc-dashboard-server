@@ -58,6 +58,10 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 
 	// Retrieve CPU temperature from sysfs / hwmon
 	m.TempCelsius = readCPUTemperature()
+
+	// Retrieve CPU frequency in MHz
+	m.FreqMHz = readCPUFrequency()
+
 	return m, nil
 }
 
@@ -173,6 +177,48 @@ func readCPUTemperature() float64 {
 	return 0.0
 }
 
+// readCPUFrequency reads active clock speeds across cores in MHz.
+func readCPUFrequency() float64 {
+	// 1. Primary Route: scaling_cur_freq across all cores
+	files, err := filepath.Glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq")
+	if err == nil && len(files) > 0 {
+		var totalFreq float64
+		var count int
+		for _, file := range files {
+			freqBytes, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			freqKHz, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64)
+			if err == nil {
+				totalFreq += freqKHz / 1000.0
+				count++
+			}
+		}
+		if count > 0 {
+			return totalFreq / float64(count)
+		}
+	}
+
+	// 2. Secondary Route: Fallback to gopsutil cpu.Info()
+	info, err := cpu.Info()
+	if err == nil && len(info) > 0 {
+		var totalFreq float64
+		var count int
+		for _, stat := range info {
+			if stat.Mhz > 0 {
+				totalFreq += stat.Mhz
+				count++
+			}
+		}
+		if count > 0 {
+			return totalFreq / float64(count)
+		}
+	}
+
+	return 0.0
+}
+
 // isNvidiaAvailable checks if nvidia-smi executable exists.
 func isNvidiaAvailable() bool {
 	_, err := exec.LookPath("nvidia-smi")
@@ -186,7 +232,7 @@ func readNvidiaGPU() (GPUMetrics, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "nvidia-smi",
-		"--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total",
+		"--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics",
 		"--format=csv,noheader,nounits")
 
 	var stdout, stderr bytes.Buffer
@@ -221,6 +267,13 @@ func readNvidiaGPU() (GPUMetrics, error) {
 	vramTotalMiB, err := strconv.ParseUint(strings.TrimSpace(parts[3]), 10, 64)
 	if err == nil {
 		m.VramTotalBytes = vramTotalMiB * 1024 * 1024
+	}
+
+	if len(parts) >= 5 {
+		freq, err := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64)
+		if err == nil {
+			m.FreqMHz = freq
+		}
 	}
 
 	return m, nil
@@ -288,5 +341,73 @@ func readSysfsGPU() (GPUMetrics, error) {
 		}
 	}
 
+	// 5. GPU Frequency
+	m.FreqMHz = readSysfsGPUFrequency()
+
 	return m, nil
+}
+
+// readSysfsGPUFrequency reads graphics engine active clock frequency in MHz in order of preference.
+func readSysfsGPUFrequency() float64 {
+	// 1. Intel Active Frequency: /sys/class/drm/card*/device/gt_act_freq_mhz or /sys/class/drm/card*/gt_act_freq_mhz
+	intelPaths := []string{
+		"/sys/class/drm/card*/device/gt_act_freq_mhz",
+		"/sys/class/drm/card*/gt_act_freq_mhz",
+	}
+	for _, pattern := range intelPaths {
+		files, err := filepath.Glob(pattern)
+		if err == nil && len(files) > 0 {
+			for _, file := range files {
+				freqBytes, err := os.ReadFile(file)
+				if err != nil {
+					continue
+				}
+				if val, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64); err == nil {
+					return val
+				}
+			}
+		}
+	}
+
+	// 2. AMD DPM System Clock: /sys/class/drm/card*/device/pp_dpm_sclk
+	amdFiles, err := filepath.Glob("/sys/class/drm/card*/device/pp_dpm_sclk")
+	if err == nil && len(amdFiles) > 0 {
+		for _, file := range amdFiles {
+			sclkBytes, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			lines := strings.Split(string(sclkBytes), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "*") {
+					s := strings.ToLower(line)
+					s = strings.ReplaceAll(s, "*", "")
+					s = strings.ReplaceAll(s, "mhz", "")
+					fields := strings.Fields(s)
+					for _, f := range fields {
+						f = strings.Trim(f, ": \t")
+						if val, err := strconv.ParseFloat(f, 64); err == nil {
+							return val
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Hwmon Frequency Input: /sys/class/drm/card*/device/hwmon/hwmon*/freq1_input (Hz to MHz)
+	hwmonFiles, err := filepath.Glob("/sys/class/drm/card*/device/hwmon/hwmon*/freq1_input")
+	if err == nil && len(hwmonFiles) > 0 {
+		for _, file := range hwmonFiles {
+			freqBytes, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			if val, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64); err == nil {
+				return val / 1000000.0
+			}
+		}
+	}
+
+	return 0.0
 }
