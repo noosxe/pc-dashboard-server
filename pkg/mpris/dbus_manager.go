@@ -510,6 +510,7 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		}
 
 	case "org.freedesktop.DBus.Properties.PropertiesChanged":
+		m.logger.Info("Received D-Bus PropertiesChanged signal", "sender", sig.Sender)
 		if len(sig.Body) < 2 {
 			return
 		}
@@ -524,6 +525,7 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		player, exists := m.activePlayers[sig.Sender]
 		if !exists {
 			m.mu.Unlock()
+			m.logger.Info("PropertiesChanged received but player not registered in activePlayers", "sender", sig.Sender)
 			return
 		}
 
@@ -543,10 +545,13 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 			}
 		}
 		if val, ok := changedProps["Metadata"]; ok {
+			m.logger.Info("D-Bus signal changedProps contains Metadata")
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
 				player.Metadata = m.parseMetadata(rawMeta)
 				updated = true
-				m.logger.Debug("MPRIS player Metadata changed", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
+				m.logger.Info("MPRIS player Metadata changed and parsed successfully", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
+			} else {
+				m.logger.Warn("Metadata key present in signal, but value is not of map[string]dbus.Variant type", "type", fmt.Sprintf("%T", val.Value()))
 			}
 		}
 		m.mu.Unlock()
@@ -648,8 +653,14 @@ func (m *DbusMPRISManager) parseMetadata(metaMap map[string]dbus.Variant) Player
 	}
 	if v, ok := metaMap["mpris:artUrl"]; ok {
 		if rawURL, ok := v.Value().(string); ok {
+			m.logger.Info("MPRIS metadata raw artUrl key found", "url", rawURL)
 			meta.ArtURL = m.extractor.Extract(rawURL)
+			m.logger.Info("MPRIS metadata processed artUrl output", "has_artwork", meta.ArtURL != "", "len", len(meta.ArtURL))
+		} else {
+			m.logger.Warn("MPRIS metadata artUrl found but value was not a string", "value", v.Value())
 		}
+	} else {
+		m.logger.Info("MPRIS metadata artUrl key was NOT present in metadata map")
 	}
 	if v, ok := metaMap["mpris:length"]; ok {
 		switch val := v.Value().(type) {
