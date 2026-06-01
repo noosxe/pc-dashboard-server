@@ -43,6 +43,8 @@ func (m *MockNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 		"Battery is currently at 12%. Connect charger.",
 	}
 
+	const mockBase64Icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
 	go func() {
 		defer close(out)
 		ticker := time.NewTicker(8 * time.Second)
@@ -58,6 +60,7 @@ func (m *MockNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 				AppName:       mockApps[idx],
 				ReplacesID:    0,
 				AppIcon:       "dialog-information",
+				AppIconBase64: mockBase64Icon,
 				Summary:       mockSummaries[idx],
 				Body:          mockBodies[idx],
 				Actions:       []string{"default", "Dismiss"},
@@ -77,6 +80,7 @@ func (m *MockNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 					AppName:       mockApps[idx],
 					ReplacesID:    0,
 					AppIcon:       "dialog-information",
+					AppIconBase64: mockBase64Icon,
 					Summary:       mockSummaries[idx],
 					Body:          mockBodies[idx],
 					Actions:       []string{"default", "Dismiss"},

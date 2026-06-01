@@ -7,6 +7,7 @@ type NotificationEvent struct {
 	AppName       string                 `json:"app_name"`
 	ReplacesID    uint32                 `json:"replaces_id"`
 	AppIcon       string                 `json:"app_icon"`
+	AppIconBase64 string                 `json:"app_icon_base64,omitempty"`
 	Summary       string                 `json:"summary"`
 	Body          string                 `json:"body"`
 	Actions       []string               `json:"actions"`

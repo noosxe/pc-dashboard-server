@@ -19,9 +19,10 @@ func sanitizeHTML(s string) string {
 
 // DbusNotificationManager coordinates monitoring and publishing via native Linux D-Bus session bus.
 type DbusNotificationManager struct {
-	logger   *slog.Logger
-	sendConn *dbus.Conn
-	mu       sync.Mutex
+	logger    *slog.Logger
+	sendConn  *dbus.Conn
+	mu        sync.Mutex
+	extractor *IconExtractor
 }
 
 // NewDbusNotificationManager instantiates the production manager, connecting to the D-Bus session.
@@ -32,8 +33,9 @@ func NewDbusNotificationManager(logger *slog.Logger) (*DbusNotificationManager, 
 	}
 
 	return &DbusNotificationManager{
-		logger:   logger,
-		sendConn: sendConn,
+		logger:    logger,
+		sendConn:  sendConn,
+		extractor: NewIconExtractor(logger),
 	}, nil
 }
 
@@ -100,16 +102,32 @@ func (m *DbusNotificationManager) Start(ctx context.Context) (<-chan Notificatio
 					hints[k] = v.Value()
 				}
 
-				out <- NotificationEvent{
-					AppName:       appName,
-					ReplacesID:    replacesId,
-					AppIcon:       appIcon,
-					Summary:       summary,
-					Body:          body,
-					Actions:       actions,
-					Hints:         hints,
-					ExpireTimeout: expireTimeout,
-				}
+				// Asynchronously extract the app icon in a background goroutine
+				// to prevent disk/image I/O from blocking the D-Bus signal receiver loop.
+				go func(appName, appIcon, summary, body string, replacesId uint32, actions []string, hints map[string]interface{}, expireTimeout int32, hintsRaw map[string]dbus.Variant) {
+					base64Icon := m.extractor.Extract(appName, appIcon, hintsRaw)
+
+					m.logger.Debug("Dispatched processed notification event",
+						"app_name", appName,
+						"replaces_id", replacesId,
+						"has_base64_icon", base64Icon != "",
+					)
+
+					select {
+					case out <- NotificationEvent{
+						AppName:       appName,
+						ReplacesID:    replacesId,
+						AppIcon:       appIcon,
+						AppIconBase64: base64Icon,
+						Summary:       summary,
+						Body:          body,
+						Actions:       actions,
+						Hints:         hints,
+						ExpireTimeout: expireTimeout,
+					}:
+					case <-ctx.Done():
+					}
+				}(appName, appIcon, summary, body, replacesId, actions, hints, expireTimeout, hintsRaw)
 			}
 		}
 	}()
