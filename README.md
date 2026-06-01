@@ -314,7 +314,15 @@ Provide real-time processor and graphics clock frequency (in MHz) telemetry.
 - **Inbound Triggering**: Add `--cpu-freq` and `--gpu-freq` CLI capabilities to verify custom clock frequencies instantly over Unix Domain Sockets.
 - *Status*: Architectural and schema design established. Awaiting design review and approval.
 
-### 3. ⚡ Additional Planned Enhancements
+### 3. 🔵 Bluetooth Device Monitoring (D-Bus / BlueZ) 🟡 *[Design Phase]*
+Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system service and stream real-time events to the companion Android app.
+- **Outbound Stream**: Emit `connected`, `disconnected`, and `updated` events whenever a Bluetooth device connects, disconnects, or changes battery/RSSI. Push a full `connected_devices` snapshot to newly connected clients. Cache state for instant synchronization.
+- **Periodic Battery & RSSI Reporting**: Poll `org.bluez.Battery1.Percentage` and `org.bluez.Device1.RSSI` for connected devices at a configurable interval (default 30s). Only emit updates when values actually change.
+- **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
+- **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
+- *Status*: Architecture and protocol design established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

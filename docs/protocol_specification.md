@@ -606,6 +606,168 @@ The companion app can transmit this command over the WebSocket connection to req
 
 ---
 
+### 3.12. Outbound Bluetooth State Payload (Host → Android Client)
+This is an event-driven payload pushed asynchronously by the daemon whenever:
+* A Bluetooth device connects or disconnects from the host system.
+* A connected device's battery level or RSSI changes (periodic poll, default every 30 seconds).
+* A new WebSocket client connects (cached state snapshot push).
+
+#### JSON Schema Spec
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BluetoothStatePush",
+  "type": "object",
+  "required": ["type", "timestamp", "data"],
+  "properties": {
+    "type": { "type": "string", "const": "bluetooth_state" },
+    "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
+    "data": {
+      "type": "object",
+      "required": ["event_type", "device", "connected_devices"],
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": ["connected", "disconnected", "updated", "snapshot"],
+          "description": "connected: device just connected; disconnected: device just disconnected; updated: battery/RSSI changed; snapshot: full initial sync on client connect"
+        },
+        "device": {
+          "type": "object",
+          "description": "The device that triggered this event (may be empty for snapshot events)",
+          "properties": {
+            "address": { "type": "string", "description": "Bluetooth MAC address (e.g. AA:BB:CC:DD:EE:FF)" },
+            "name": { "type": "string", "description": "BlueZ Device1.Name property" },
+            "alias": { "type": "string", "description": "User-assigned alias (may equal name)" },
+            "class": { "type": "integer", "minimum": 0, "description": "Bluetooth device class bitmask" },
+            "battery_percent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100, "description": "Battery level percentage; null if Battery Service (BAS) not supported" },
+            "rssi": { "type": ["integer", "null"], "description": "Signal strength in dBm; null if not available" },
+            "connected": { "type": "boolean" },
+            "paired": { "type": "boolean" },
+            "trusted": { "type": "boolean" }
+          }
+        },
+        "connected_devices": {
+          "type": "array",
+          "description": "Full list of currently connected Bluetooth devices after applying this event",
+          "items": {
+            "type": "object",
+            "required": ["address", "name", "alias", "class", "connected", "paired", "trusted"],
+            "properties": {
+              "address": { "type": "string" },
+              "name": { "type": "string" },
+              "alias": { "type": "string" },
+              "class": { "type": "integer", "minimum": 0 },
+              "battery_percent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+              "rssi": { "type": ["integer", "null"] },
+              "connected": { "type": "boolean" },
+              "paired": { "type": "boolean" },
+              "trusted": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Examples
+
+* **Device Connected Event**:
+```json
+{
+  "type": "bluetooth_state",
+  "timestamp": 1716213825,
+  "data": {
+    "event_type": "connected",
+    "device": {
+      "address": "AA:BB:CC:11:22:33",
+      "name": "Wireless Headphones",
+      "alias": "My Headphones",
+      "class": 2360328,
+      "battery_percent": 87,
+      "rssi": -58,
+      "connected": true,
+      "paired": true,
+      "trusted": true
+    },
+    "connected_devices": [
+      {
+        "address": "AA:BB:CC:11:22:33",
+        "name": "Wireless Headphones",
+        "alias": "My Headphones",
+        "class": 2360328,
+        "battery_percent": 87,
+        "rssi": -58,
+        "connected": true,
+        "paired": true,
+        "trusted": true
+      }
+    ]
+  }
+}
+```
+
+* **Device Disconnected Event**:
+```json
+{
+  "type": "bluetooth_state",
+  "timestamp": 1716213860,
+  "data": {
+    "event_type": "disconnected",
+    "device": {
+      "address": "AA:BB:CC:11:22:33",
+      "name": "Wireless Headphones",
+      "alias": "My Headphones",
+      "class": 2360328,
+      "battery_percent": null,
+      "rssi": null,
+      "connected": false,
+      "paired": true,
+      "trusted": true
+    },
+    "connected_devices": []
+  }
+}
+```
+
+* **Battery/RSSI Update Event**:
+```json
+{
+  "type": "bluetooth_state",
+  "timestamp": 1716213890,
+  "data": {
+    "event_type": "updated",
+    "device": {
+      "address": "AA:BB:CC:11:22:33",
+      "name": "Wireless Headphones",
+      "alias": "My Headphones",
+      "class": 2360328,
+      "battery_percent": 86,
+      "rssi": -62,
+      "connected": true,
+      "paired": true,
+      "trusted": true
+    },
+    "connected_devices": [
+      {
+        "address": "AA:BB:CC:11:22:33",
+        "name": "Wireless Headphones",
+        "alias": "My Headphones",
+        "class": 2360328,
+        "battery_percent": 86,
+        "rssi": -62,
+        "connected": true,
+        "paired": true,
+        "trusted": true
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## 4. Connection State Machine & Recovery
 
 ```
@@ -671,7 +833,7 @@ Command clients transmit a single JSON object frame upon successful socket dial.
   "properties": {
     "type": { 
       "type": "string", 
-      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "power_profile_state", "raw"] 
+      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "power_profile_state", "bluetooth_state", "raw"] 
     },
     "data": { 
       "type": "object",

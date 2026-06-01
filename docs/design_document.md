@@ -25,6 +25,7 @@ This document outlines the selected tools, libraries, and protocols to implement
 | **Configuration Management** | `github.com/knadh/koanf/v2` | Lightweight, extensible configuration engine supporting YAML configs, environment variables, and CLI flags. | None (Pure Go) | **Safe**: Minimal, modern codebase. Parses strict schemas without arbitrary code execution vectors. |
 | **D-Bus & Media (MPRIS)** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus Session Bus to query and control MPRIS media players. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids binary/CLI dependencies and execution. |
 | **D-Bus & Power Profiles** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus System Bus to query and control system power profiles. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids spawning system shell processes. |
+| **D-Bus & Bluetooth (BlueZ)** | `github.com/godbus/dbus/v5` | Passive monitoring of connected Bluetooth devices via the BlueZ system service (`org.bluez`): ObjectManager bootstrap, signal subscriptions, and periodic battery/RSSI property reads. | None (Pure Go) | **Safe**: Strictly read-only D-Bus access. No state-mutating BlueZ methods are ever invoked. MAC addresses are logged only at debug level. |
 
 ---
 
@@ -81,6 +82,7 @@ graph TD
     DaemonCore -->|uses| NotificationManager[NotificationManager Interface]
     DaemonCore -->|uses| LockManager[LockManager Interface]
     DaemonCore -->|uses| PowerProfilesManager[PowerProfilesManager Interface]
+    DaemonCore -->|uses| BluetoothManager[BluetoothManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
@@ -99,6 +101,9 @@ graph TD
 
     PowerProfilesManager -.->|Implementation| DbusPower[DbusPowerProfilesManager <br>Pure Go D-Bus system bus]
     PowerProfilesManager -.->|Implementation| MockPower[MockPowerProfilesManager <br>Simulated power profiles]
+
+    BluetoothManager -.->|Implementation| DbusBlueZ[DbusBluetoothManager <br>Pure Go D-Bus system bus / BlueZ]
+    BluetoothManager -.->|Implementation| MockBluetooth[MockBluetoothManager <br>Simulated BT connect/disconnect ticks]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -374,7 +379,51 @@ type PowerProfilesManager interface {
 	1.  `DbusPowerProfilesManager`: Production manager communicating directly over the D-Bus System Bus with `net.hadess.PowerProfiles` using `godbus`.
 	2.  `MockPowerProfilesManager`: Emulation client that simulates supported profiles (`balanced`, `power-saver`, `performance`) and maintains profile change state in-memory to enable containerized testing.
 
-### 4.7. Application Package & Module Layout
+### 4.7. Bluetooth Device Monitor Interface (`BluetoothManager`)
+The Bluetooth device monitoring engine communicates exclusively through this interface:
+
+```go
+package bluetooth
+
+import "context"
+
+// BluetoothDevice holds the state of a single connected Bluetooth device.
+type BluetoothDevice struct {
+	Address   string  `json:"address"`                    // e.g. "AA:BB:CC:DD:EE:FF"
+	Name      string  `json:"name"`                       // BlueZ Device1.Name property
+	Alias     string  `json:"alias"`                      // BlueZ Device1.Alias (user-assigned)
+	Class     uint32  `json:"class"`                      // Bluetooth device class bitmask
+	Battery   *uint8  `json:"battery_percent,omitempty"`  // nil if Battery1 interface absent
+	RSSI      *int16  `json:"rssi,omitempty"`             // nil if not available
+	Connected bool    `json:"connected"`
+	Paired    bool    `json:"paired"`
+	Trusted   bool    `json:"trusted"`
+}
+
+// BluetoothEvent represents a state change in the connected Bluetooth device set.
+type BluetoothEvent struct {
+	// EventType: "connected" | "disconnected" | "updated" | "snapshot"
+	EventType        string           `json:"event_type"`
+	Device           BluetoothDevice  `json:"device"`
+	ConnectedDevices []BluetoothDevice `json:"connected_devices"`
+}
+
+// BluetoothManager defines the contract for Bluetooth device monitoring.
+type BluetoothManager interface {
+	// Start begins monitoring BlueZ for device events and periodic battery/RSSI
+	// updates. Returns a channel of BluetoothEvents.
+	Start(ctx context.Context) (<-chan BluetoothEvent, error)
+
+	// ConnectedDevices returns the current snapshot of connected devices.
+	ConnectedDevices() []BluetoothDevice
+}
+```
+
+*   **Implementations**:
+	1.  `DbusBluetoothManager`: Production manager connecting to the D-Bus System Bus, bootstrapping from `GetManagedObjects`, registering `InterfacesAdded`, `InterfacesRemoved`, and `PropertiesChanged` signal subscriptions on `org.bluez`, and running a periodic goroutine (configurable interval, default 30s) to poll `Battery1.Percentage` and `Device1.RSSI` for connected devices.
+	2.  `MockBluetoothManager`: Emulation client activated by the `--mock-bluetooth` flag. Simulates a scripted sequence of connect/disconnect events across three mock devices (wireless headphones, keyboard, game controller) with oscillating RSSI and draining battery values.
+
+### 4.8. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -412,6 +461,10 @@ pc-dashboard-server/
 │   │   ├── power.go              # PowerProfilesManager interface & event models
 │   │   ├── dbus_manager.go       # Production PowerProfilesManager (System D-Bus)
 │   │   └── mock_manager.go       # Simulated power profiles event generator
+│   ├── bluetooth/                # Bluetooth device monitoring module
+│   │   ├── bluetooth.go          # BluetoothManager interface & event/device models
+│   │   ├── dbus_manager.go       # Production BluetoothManager (BlueZ System D-Bus)
+│   │   └── mock_manager.go       # Simulated BT connect/disconnect/RSSI/battery events
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -423,12 +476,13 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, and `PowerProfilesManager`.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`, `--mock-bluetooth`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, and `BluetoothManager`.
 2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
-4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, `LockManager`, and `PowerProfilesManager` event channels, pushing `media_state`, `notification_event`, `session_lock`, and `power_profile_state` updates to the WebSocket broadcaster as they arrive.
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, and `BluetoothManager` event channels, pushing `media_state`, `notification_event`, `session_lock`, `power_profile_state`, and `bluetooth_state` updates to the WebSocket broadcaster as they arrive.
    - **Session Lock State Caching**: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
    - **Power Profile Caching**: Similarly, the engine caches the last received `power_profile_state` to immediately push the current system profile and list of available profiles to clients as soon as they connect.
+   - **Bluetooth State Caching**: The engine caches the last `bluetooth_state` payload (full `connected_devices` list). When a new client connects, the cached Bluetooth state is immediately pushed alongside the session lock and power profile caches.
 5. **Command Ingestion Phase**: WebSocket clients send `notification_command`, `media_command`, or `power_profile_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager`, `MPRISManager`, or `PowerProfilesManager` to execute actions or trigger properties writes on the host system.
 6. **Local Command Socket Triggering**: 
    - When the daemon starts, the `pkg/daemon` engine starts the `command_listener` goroutine which binds to a local Unix Domain Socket (default `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
