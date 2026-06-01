@@ -3,6 +3,7 @@ package mpris
 import (
 	"encoding/base64"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,11 @@ func (e *ArtworkExtractor) Extract(artURL string) string {
 		return artURL
 	}
 
-	// 2. Standardize and clean the local filesystem path
+	// 2. Standardize, decode, and clean the local filesystem path
+	unescapedPath, err := url.PathUnescape(localPath)
+	if err == nil {
+		localPath = unescapedPath
+	}
 	cleanPath := filepath.Clean(localPath)
 
 	// 3. Query the cache to avoid redundant disk and encoding I/O
@@ -69,9 +74,9 @@ func (e *ArtworkExtractor) Extract(artURL string) string {
 		return ""
 	}
 
-	// 5. Security Constraint: Enforce a strict file-size cap (256 KB) to prevent memory exhaustion
-	if info.Size() > 262144 {
-		e.logger.Warn("Local artwork file exceeds security payload size limit (256 KB)", "path", cleanPath, "size", info.Size())
+	// 5. Security Constraint: Enforce a strict file-size cap (2 MB) to prevent memory exhaustion
+	if info.Size() > 2097152 {
+		e.logger.Warn("Local artwork file exceeds security payload size limit (2 MB)", "path", cleanPath, "size", info.Size())
 		return ""
 	}
 

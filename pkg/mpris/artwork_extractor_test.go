@@ -109,28 +109,57 @@ func TestArtworkExtractor_SizeCapLimit(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create a file within the limit (250 KB)
+	// Create a file within the limit (1.9 MB)
 	okFile := filepath.Join(tempDir, "ok.png")
-	okContent := make([]byte, 250*1024)
+	okContent := make([]byte, 1900*1024)
 	if err := os.WriteFile(okFile, okContent, 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
 	resOk := extractor.Extract(okFile)
 	if resOk == "" {
-		t.Error("Expected successful extraction for file within limit (250 KB), but got empty string")
+		t.Error("Expected successful extraction for file within limit (1.9 MB), but got empty string")
 	}
 
-	// Create a file exceeding the limit (260 KB)
+	// Create a file exceeding the limit (2.1 MB)
 	largeFile := filepath.Join(tempDir, "large.png")
-	largeContent := make([]byte, 260*1024)
+	largeContent := make([]byte, 2100*1024)
 	if err := os.WriteFile(largeFile, largeContent, 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
 	resLarge := extractor.Extract(largeFile)
 	if resLarge != "" {
-		t.Errorf("Expected empty string for file exceeding limit (260 KB), but got %q", resLarge)
+		t.Errorf("Expected empty string for file exceeding limit (2.1 MB), but got %q", resLarge)
+	}
+}
+
+func TestArtworkExtractor_PercentEncodedPath(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	extractor := NewArtworkExtractor(logger)
+
+	tempDir, err := os.MkdirTemp("", "artwork test space_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	filePath := filepath.Join(tempDir, "cover art.png")
+	content := []byte("space path artwork")
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Test unescaping by passing a percent-encoded file:// URL (spaces as %20)
+	percentEncodedURI := "file://" + strings.ReplaceAll(filePath, " ", "%20")
+	res := extractor.Extract(percentEncodedURI)
+	if res == "" {
+		t.Fatal("Expected successful extraction for percent-encoded path, got empty string")
+	}
+
+	expectedPrefix := "data:image/png;base64,"
+	if !strings.HasPrefix(res, expectedPrefix) {
+		t.Errorf("Expected extracted base64 data to have prefix %q, got %q", expectedPrefix, res)
 	}
 }
 
