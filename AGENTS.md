@@ -125,7 +125,7 @@ When a new feature is requested, start by laying the technical and architectural
 2.  **Security Review**: Carefully consider the security implications of the new feature (e.g., trust boundaries, sensitive data pathways, and loopback safety) and document them.
 3.  **Update Documentation**: Update the existing markdown documentation in the repository (e.g., under `docs/` or `README.md`) to comprehensively describe the planned architecture, protocol changes, and behavior.
 4.  **Add to Roadmap**: Add the proposed feature to the **Roadmap** section of `README.md` with a small, clear summary of its scope and status (e.g., `*[Design Phase]*`).
-5.  **Submit for Review**: Commit the documentation changes, push the branch, and open a Pull Request (PR).
+5.  **Submit for Review**: Commit the documentation changes, push the branch, and open a Pull Request (PR). **When opening the PR for design work, always include a comprehensive summary of the design proposal inside the PR description.**
 
 ### 2. Review Phase
 During this phase, the user reviews the updated documentation to evaluate the proposed design.
