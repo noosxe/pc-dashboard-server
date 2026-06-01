@@ -322,7 +322,16 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
 
-### 3. ⚡ Additional Planned Enhancements
+### 3. 🖼️ Notification Icon Synchronization & Delivery 🟡 *[Design Phase]*
+Provide a robust 2-tier resolution mechanism for desktop notification icons:
+- **Tier 1 (Android Client)**: Use a pre-packaged asset library for common applications (e.g. Slack, Spotify, Discord).
+- **Tier 2 (Go Daemon)**: Resolve and serialize icons from three distinct sources on the host system as fallback:
+  - **Raw D-Bus image-data/icon_data hints**: Decodes and PNG-compresses raw pixel arrays asynchronously.
+  - **Absolute local paths**: Identifies and encodes local file paths to Base64.
+  - **Themed icons**: Matches `app_icon` names against system themes by scanning XDG `.desktop` paths.
+- *Status*: Detailed architecture and protocol specifications established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
