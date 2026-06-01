@@ -312,7 +312,7 @@ When a user interacts with a notification on the companion Android app, the app 
 ---
 
 ### 3.8. Session Lock & Screensaver Detection (D-Bus)
-The PC Dashboard Server leverages both the **D-Bus Session Bus** and the **D-Bus System Bus** to dynamically track user desktop session lock and unlock states. This telemetry allows the Android companion client to enter sleeping mode after a timeout when the host PC is locked.
+The PC Dashboard Server leverages both the **D-Bus Session Bus** and the **D-Bus System Bus** to dynamically track user desktop session lock and unlock states. Under this separated behavior, session locks do **not** power down the Android device's screen. Instead, they trigger a distinct dashboard lockscreen state and optional low-power polling throttle.
 
 #### A. Screensaver Status Interception (Session Bus)
 To support modern desktop environments (GNOME, KDE, Cinnamon, etc.) that manage screen locks via a user-session screensaver, the daemon connects to the D-Bus Session Bus:
@@ -337,15 +337,39 @@ Since multiple signals (e.g. systemd-logind `Lock` and GNOME Screensaver `Active
 1.  **Deduplication**: The engine tracks the current session lock state. It deduplicates incoming events and only triggers an outbound WebSocket notification if a genuine transition has occurred.
 2.  **Graceful Fallback**: If either bus connection or registration fails (e.g., in headless environments, containers, or systems without a system bus), the daemon logs a warning and gracefully operates using only the successful bus, ensuring continuous operation.
 
-#### D. Companion App Screen Wake & Sleep Control (DPMS Sync)
-Upon detecting lock state transitions (representing screen power changes/DPMS off/on events), the daemon uses native ADB protocol socket commands over TCP loopback to control the companion device's screen state:
-1. **Screen Sleep (DPMS Off / Lock)**: When the session locks (screensaver active / physical console locked), the daemon uses raw TCP sockets on port `5037` to issue the non-toggling `shell:input keyevent KEYCODE_SLEEP` (keyevent `223`) command to the target Android companion app device. This puts the Android device's screen to sleep to conserve energy and match the host's screen-off state.
-2. **Screen Wake (DPMS On / Unlock)**: When the session unlocks (screensaver inactive / physical console unlocked), the daemon issues the non-toggling `shell:input keyevent KEYCODE_WAKEUP` (keyevent `224`) command to the target Android companion app device, waking its screen to resume status visualization immediately.
-3. **App-Control Bypass**: If the server configuration has `no_app_control` set to `true`, these automatic wakeup/sleep ADB signals are bypassed.
+#### D. Outbound State and Local Low-Power Polling Throttle
+Upon detecting a genuine session lock transition:
+1. **Outbound Lock Event**: The daemon broadcasts the `session_lock` WebSocket event carrying a simple binary state (e.g., `{"type": "session_lock", "data": {"locked": true}}`). Upon receiving `"locked": true`, the companion Android application remains awake but transitions its user interface to a **lower-power, custom dashboard lockscreen UI** (retaining design aesthetics while preventing OLED burn-in).
+2. **Configurable Low-Power Polling**: While the session is locked, the daemon dynamically throttles the hardware telemetry polling frequency from the standard 1-second rate to a **configurable, reduced frequency** (defaulting to 5.0 seconds, configurable via `daemon.locked_update_interval_ms`). This conserves host CPU cycles, minimizes USB data transfer bandwidth, and reduces Android battery consumption. When the session transitions back to `unlocked`, the standard 1-second high-resolution interval is instantly restored.
 
 ---
 
-### 3.9. Power Profiles Control & Sync (D-Bus)
+### 3.9. Display Power Management Signaling (DPMS) Screen Sync
+The PC Dashboard Server features a dedicated, independent **DPMS Sync Engine** to coordinate physical display power events between the host workstation and the connected Android companion device. When the host's physical displays go completely blank/power off (DPMS Off / Sleep), the Android screen is turned off synchronously. When the host display wakes up (DPMS On), the Android screen is instantly woken up.
+
+#### A. D-Bus Display Power Interception (Desktop Environments)
+To support modern desktop environments, the daemon integrates with the system/session D-Bus buses to track native display power changes:
+1. **GNOME (Mutter)**: The daemon registers a `PropertiesChanged` signal listener targeting the well-known interface `org.gnome.Mutter.DisplayConfig` on path `/org/gnome/Mutter/DisplayConfig` on the D-Bus Session Bus. It extracts the `PowerSaveMode` property value:
+   * `PowerSaveMode == 1` represents DPMS Off (Screen Off).
+   * `PowerSaveMode == 0` represents DPMS On (Screen Normal / On).
+2. **KDE (Plasma)**: The daemon registers properties-change listeners targeting `org.freedesktop.PowerManagement` or `org.kde.Solid.PowerManagement` on the D-Bus Session Bus to intercept display power-saving state transitions.
+
+#### B. Independent UNIX Domain Socket Triggering (Minimal Window Managers)
+For minimalist window managers and custom Wayland compositors (such as Hyprland, Sway, or i3) that do not publish DPMS property changes over standard D-Bus, the daemon exposes dedicated, independent command trigger pathways over the local Unix Domain Socket (UDS) command trigger:
+1. **Dedicated Command Trigger**: The command socket accepts a distinct, standalone `dpms` request payload separate from session management triggers:
+   * `{"type": "dpms", "data": {"state": "off"}}`
+   * `{"type": "dpms", "data": {"state": "on"}}`
+2. **Idle Manager Integration**: Users can easily bind these triggers to their compositor's idle manager or utility scripts (e.g. `hypridle`'s `on-timeout` and `on-resume` directives) by piping the JSON string directly into the local UDS command trigger file (default path resolves to `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
+
+#### C. Companion App Physical Screen Control (ADB Core)
+Upon receiving or intercepting a display power transition, the daemon issues raw ADB TCP socket commands over local loopback (`127.0.0.1:5037`) to control the physical Android companion device's screen state:
+1. **Screen Sleep (DPMS Off)**: The daemon uses raw TCP sockets on port `5037` to issue the non-toggling `shell:input keyevent KEYCODE_SLEEP` (keyevent `223`) command to the target Android companion device. This puts the Android device's screen to sleep to conserve energy and match the host's screen-off state.
+2. **Screen Wake (DPMS On)**: The daemon issues the non-toggling `shell:input keyevent KEYCODE_WAKEUP` (keyevent `224`) command to the target Android companion device, waking its screen to resume status visualization immediately.
+3. **App-Control Bypass**: If the server configuration has `no_app_control` set to `true`, these automatic wakeup/sleep ADB signals are completely bypassed.
+
+---
+
+### 3.10. Power Profiles Control & Sync (D-Bus)
 The PC Dashboard Server leverages the **D-Bus System Bus** to dynamically query available power profiles, track profile changes in real time, and control the active power profile on the host PC via the **`power-profiles-daemon`** standard system service.
 
 #### A. Power Profile Discovery & Tracking

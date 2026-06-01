@@ -326,7 +326,15 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
 
-### 4. ⚡ Additional Planned Enhancements
+### 4. 🖥️ Separate Session Lock and DPMS Sync Control 🟡 *[Design Phase]*
+Decouple host session lock events (workstation locked, screensaver active) from physical display power management signaling (DPMS off/on) to optimize companion dashboard power states and aesthetics.
+- **Session Lock / Unlock**: Tracks host lockscreen/screensaver state. When locked, the Android companion device remains awake but transitions its UI to a low-power, customized local dashboard lockscreen to prevent screen burn-in.
+- **Configurable Low-Power Polling**: Throttles the hardware telemetry polling rate from the standard 1-second rate to a configurable, reduced frequency (defaulting to 5.0 seconds) during a session lock state, conserving host CPU and Android battery.
+- **DPMS Sync**: Tracks physical host display power events (On/Off) via native D-Bus properties (such as GNOME/Mutter's `PowerSaveMode` or KDE's power-saving signals) and sends direct ADB keyevents (`KEYCODE_SLEEP`/`KEYCODE_WAKEUP`) to wake or sleep the Android device screen synchronously.
+- **Independent Command Triggers**: Adds dedicated, separate triggers over the local Unix Domain Socket (UDS) command socket (e.g. `pc-dashboard-server trigger dpms --state [on|off]`) for minimal window managers (like Hyprland/Sway) that do not publish DPMS changes over standard D-Bus, allowing seamless integration with idle daemons (like `hypridle`).
+- *Status*: Specification and design architecture have been fully established. Awaiting user review and implementation phase activation.
+
+### 5. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
