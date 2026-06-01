@@ -283,6 +283,7 @@ type NotificationEvent struct {
 	AppName       string                 `json:"app_name"`
 	ReplacesID    uint32                 `json:"replaces_id"`
 	AppIcon       string                 `json:"app_icon"`
+	AppIconBase64 string                 `json:"app_icon_base64,omitempty"`
 	Summary       string                 `json:"summary"`
 	Body          string                 `json:"body"`
 	Actions       []string               `json:"actions"`
@@ -320,7 +321,10 @@ type NotificationManager interface {
 
 *   **Implementations**:
 	1.  `DbusNotificationManager`: Production client communicating directly over D-Bus Session sockets using `godbus`'s `BecomeMonitor` for interception, correlating returned notification IDs, emitting `ActionInvoked` signals for actions, and calling `CloseNotification` methods for dismissal.
-	2.  `MockNotificationManager`: Emulation client that triggers randomized simulated notification events with incrementing IDs, logs mock actions, and logs mock dismissals.
+	    *   **Subsystem: IconExtractor**: To populate the `AppIconBase64` field as a tier-2 backup for companion app recognition, `DbusNotificationManager` delegates tasks to an asynchronous `IconExtractor` engine. 
+	    *   **Asynchronous Workers**: To prevent disk I/O or PNG rendering from blocking the core D-Bus signal receiver loop, extraction jobs are executed in background worker goroutines.
+	    *   **Caching & Resizing**: The extractor resizes large raw canvases (via a clean, pure-Go nearest-neighbor or bilinear algorithm to a maximum of 96x96 pixels), handles SVGs by transmitting them raw, and caches successful base64 strings in a thread-safe `sync.Map` to completely bypass redundant search iterations.
+	2.  `MockNotificationManager`: Emulation client that triggers randomized simulated notification events with incrementing IDs, logs mock actions, and logs mock dismissals. Also returns a mock Base64 single-pixel spacer string when testing in virtualized environments.
 
 ### 4.5. Session Lock Interface (`LockManager`)
 The user session lock status tracking engine communicates exclusively through this interface:

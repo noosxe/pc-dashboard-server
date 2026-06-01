@@ -361,6 +361,7 @@ This is an event-driven payload pushed asynchronously by the daemon whenever a d
         "app_name": { "type": "string" },
         "replaces_id": { "type": "integer", "minimum": 0 },
         "app_icon": { "type": "string" },
+        "app_icon_base64": { "type": "string", "description": "Optional Base64-encoded PNG or SVG image URI resolved from raw hints, file paths, or themes" },
         "summary": { "type": "string" },
         "body": { "type": "string" },
         "actions": { "type": "array", "items": { "type": "string" }, "description": "Interleaved action key/label pairs" },
@@ -372,7 +373,7 @@ This is an event-driven payload pushed asynchronously by the daemon whenever a d
 }
 ```
 
-#### JSON Payload Example
+#### JSON Payload Example (Standard Themed Lookup Fallback)
 ```json
 {
   "type": "notification_event",
@@ -382,6 +383,7 @@ This is an event-driven payload pushed asynchronously by the daemon whenever a d
     "app_name": "Slack",
     "replaces_id": 0,
     "app_icon": "slack",
+    "app_icon_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAw...",
     "summary": "New message from Alice",
     "body": "Hey, are you free for a call?",
     "actions": ["default", "Activate", "dismiss", "Dismiss"],
@@ -392,6 +394,18 @@ This is an event-driven payload pushed asynchronously by the daemon whenever a d
   }
 }
 ```
+
+#### Application Icon Resolution Protocol (2-Tier Resolution)
+To maximize visual fidelity on the companion app screen, the daemon resolves notification icons using a 2-tier architecture:
+
+1. **Android Client-Side Cache (Tier 1)**:
+   The Android app is pre-packaged with high-resolution vector and raster assets for the top 50 popular desktop applications (e.g. Slack, Discord, Spotify). If `app_icon` matches a known local asset identifier, the client renders the local high-fidelity resource directly to save bandwidth.
+
+2. **Host Daemon Base64 Serialization (Tier 2 Fallback)**:
+   If the icon is dynamic (e.g., chat avatar) or the application is not in the client-side library, the daemon attempts to populate `app_icon_base64` using the following tiered sequence:
+   * **Step A: Capture raw image hints**: Check `image-data` (or deprecated `icon_data`) D-Bus notification hints containing signature `(iiibiiay)`. The daemon extracts the raw pixel buffer, compresses it into a high-performance PNG, Base64-encodes it, and prefixes with `data:image/png;base64,`.
+   * **Step B: Resolve absolute file paths**: If `app_icon` or `image-path` contains a valid, readable local system path (e.g. `/tmp/avatar.png`), the daemon reads and Base64-encodes the image.
+   * **Step C: Resolve themed icon names**: If `app_icon` is a themed name (e.g., `"gimp"`), the daemon scans standard XDG applications paths for `.desktop` matches, extracts the `Icon=` string, and searches standard icon directories (e.g., `/usr/share/icons/hicolor/`) for `.png` or `.svg` targets. SVGs are sent raw with the `data:image/svg+xml;base64,` prefix.
 
 ---
 
