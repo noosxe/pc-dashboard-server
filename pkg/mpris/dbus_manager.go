@@ -510,7 +510,6 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		}
 
 	case "org.freedesktop.DBus.Properties.PropertiesChanged":
-		m.logger.Info("Received D-Bus PropertiesChanged signal", "sender", sig.Sender)
 		if len(sig.Body) < 2 {
 			return
 		}
@@ -524,13 +523,7 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		m.mu.Lock()
 		player, exists := m.activePlayers[sig.Sender]
 		if !exists {
-			knownPlayers := make([]string, 0, len(m.activePlayers))
-			for owner, p := range m.activePlayers {
-				knownPlayers = append(knownPlayers, fmt.Sprintf("%s (%s/%s)", owner, p.PlayerName, p.Identity))
-			}
 			m.mu.Unlock()
-			m.logger.Info("PropertiesChanged received but player not registered in activePlayers",
-				"sender", sig.Sender, "known_players", knownPlayers)
 			return
 		}
 
@@ -550,17 +543,16 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 			}
 		}
 		if val, ok := changedProps["Metadata"]; ok {
-			m.logger.Info("D-Bus signal changedProps contains Metadata")
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
 				newMeta := m.parseMetadata(rawMeta)
 				// Preserve existing base64 artwork if the new metadata update lacks it but is the same track/title
 				if newMeta.ArtURL == "" && player.Metadata.ArtURL != "" && newMeta.Title == player.Metadata.Title {
-					m.logger.Info("Preserving existing processed artwork for the same track", "title", newMeta.Title)
+					m.logger.Debug("Preserving existing processed artwork for the same track", "title", newMeta.Title)
 					newMeta.ArtURL = player.Metadata.ArtURL
 				}
 				player.Metadata = newMeta
 				updated = true
-				m.logger.Info("MPRIS player Metadata changed and parsed successfully", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
+				m.logger.Debug("MPRIS player Metadata changed", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
 			} else {
 				m.logger.Warn("Metadata key present in signal, but value is not of map[string]dbus.Variant type", "type", fmt.Sprintf("%T", val.Value()))
 			}
@@ -664,14 +656,8 @@ func (m *DbusMPRISManager) parseMetadata(metaMap map[string]dbus.Variant) Player
 	}
 	if v, ok := metaMap["mpris:artUrl"]; ok {
 		if rawURL, ok := v.Value().(string); ok {
-			m.logger.Info("MPRIS metadata raw artUrl key found", "url", rawURL)
 			meta.ArtURL = m.extractor.Extract(rawURL)
-			m.logger.Info("MPRIS metadata processed artUrl output", "has_artwork", meta.ArtURL != "", "len", len(meta.ArtURL))
-		} else {
-			m.logger.Warn("MPRIS metadata artUrl found but value was not a string", "value", v.Value())
 		}
-	} else {
-		m.logger.Info("MPRIS metadata artUrl key was NOT present in metadata map")
 	}
 	if v, ok := metaMap["mpris:length"]; ok {
 		switch val := v.Value().(type) {
