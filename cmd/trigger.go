@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/noosxe/pc-dashboard-server/pkg/daemon"
+	"github.com/noosxe/pc-dashboard-server/pkg/dpms"
 	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
@@ -50,6 +51,26 @@ var UnlockCmd = &cobra.Command{
 			return err
 		}
 		return sendUDSRequest(triggerSocketPath, daemon.UDSRequest{Type: "session_lock", Data: data})
+	},
+}
+
+// DpmsState variable
+var dpmsState string
+
+// DpmsCmd triggers a display power (DPMS) state event
+var DpmsCmd = &cobra.Command{
+	Use:   "dpms",
+	Short: "Trigger a mock DPMS display power event",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		state := strings.ToLower(dpmsState)
+		if state != "on" && state != "off" {
+			return fmt.Errorf("flag --state must be either 'on' or 'off'")
+		}
+		data, err := json.Marshal(dpms.DpmsEvent{State: state})
+		if err != nil {
+			return err
+		}
+		return sendUDSRequest(triggerSocketPath, daemon.UDSRequest{Type: "dpms", Data: data})
 	},
 }
 
@@ -312,9 +333,13 @@ func init() {
 	RawCmd.Flags().StringVarP(&rawType, "type", "t", "", "Custom type wrapper name (e.g. 'custom_metrics')")
 	RawCmd.Flags().StringVarP(&rawData, "data", "d", "", "Valid JSON string payload (e.g. '{\"key\": \"val\"}')")
 
+	// DPMS subcommand flags
+	DpmsCmd.Flags().StringVar(&dpmsState, "state", "off", "Display power state (on or off)")
+
 	// Wire child subcommands into TriggerCmd
 	TriggerCmd.AddCommand(LockCmd)
 	TriggerCmd.AddCommand(UnlockCmd)
+	TriggerCmd.AddCommand(DpmsCmd)
 	TriggerCmd.AddCommand(NotificationCmd)
 	TriggerCmd.AddCommand(MediaCmd)
 	TriggerCmd.AddCommand(TelemetryCmd)

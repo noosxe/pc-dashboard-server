@@ -30,10 +30,11 @@ func DefaultConfig() Config {
 			Port: 12345,
 		},
 		Daemon: DaemonConfig{
-			UpdateIntervalMS: 1000,
-			LogLevel:         "info",
-			LogFormat:        "text",
-			SocketPath:       socketPath,
+			UpdateIntervalMS:       1000,
+			LockedUpdateIntervalMS: 5000,
+			LogLevel:               "info",
+			LogFormat:              "text",
+			SocketPath:             socketPath,
 		},
 		ADB: ADBConfig{
 			ServerHost:     "127.0.0.1",

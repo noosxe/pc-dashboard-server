@@ -8,10 +8,11 @@ type ServerConfig struct {
 
 // DaemonConfig holds operating controls for the server.
 type DaemonConfig struct {
-	UpdateIntervalMS int    `koanf:"update_interval_ms"`
-	LogLevel         string `koanf:"log_level"`
-	LogFormat        string `koanf:"log_format"`
-	SocketPath       string `koanf:"socket_path"`
+	UpdateIntervalMS       int    `koanf:"update_interval_ms"`
+	LockedUpdateIntervalMS int    `koanf:"locked_update_interval_ms"`
+	LogLevel               string `koanf:"log_level"`
+	LogFormat              string `koanf:"log_format"`
+	SocketPath             string `koanf:"socket_path"`
 }
 
 // ADBConfig holds target settings to connect and bootstrap Android devices.

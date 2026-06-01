@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
+	"github.com/noosxe/pc-dashboard-server/pkg/dpms"
 	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
@@ -41,7 +42,8 @@ func TestEngine_LockStateCaching(t *testing.T) {
 	lm := &manualLockManager{events: lockEvents}
 
 	pm := power.NewMockPowerProfilesManager(logger)
-	engine := NewEngine(cfg, mr, ac, nm, mm, lm, pm, logger, logger)
+	dm := dpms.NewMockDpmsManager(logger)
+	engine := NewEngine(cfg, mr, ac, nm, mm, lm, pm, dm, logger, logger)
 
 	// 2. Start runLockMonitor in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -122,6 +124,14 @@ func (m *manualLockManager) Start(ctx context.Context) (<-chan lock.SessionLockE
 	return m.events, nil
 }
 
+type manualDpmsManager struct {
+	events chan dpms.DpmsEvent
+}
+
+func (m *manualDpmsManager) Start(ctx context.Context) (<-chan dpms.DpmsEvent, error) {
+	return m.events, nil
+}
+
 type trackingADBClient struct {
 	mu           sync.Mutex
 	wakeCalled   bool
@@ -194,7 +204,7 @@ func TestEngine_NoAppControl(t *testing.T) {
 	cfg.ADB.NoAppControl = true
 
 	ac := &trackingADBClient{}
-	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, nil, logger, logger)
 
 	// Trigger bootstrapDevice
 	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
@@ -222,7 +232,7 @@ func TestEngine_AppControlEnabled(t *testing.T) {
 	cfg.ADB.NoAppControl = false
 
 	ac := &trackingADBClient{}
-	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, nil, logger, logger)
 
 	// Trigger bootstrapDevice
 	engine.bootstrapDevice(context.Background(), "TEST_SERIAL")
@@ -243,82 +253,82 @@ func TestEngine_AppControlEnabled(t *testing.T) {
 	}
 }
 
-func TestEngine_LockUnlockTriggersAdb(t *testing.T) {
+func TestEngine_DpmsTriggersAdb(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	cfg := &config.Config{}
 	cfg.ADB.NoAppControl = false
 
 	ac := &trackingADBClient{}
-	lockEvents := make(chan lock.SessionLockEvent, 5)
-	lm := &manualLockManager{events: lockEvents}
+	dpmsEvents := make(chan dpms.DpmsEvent, 5)
+	dm := &manualDpmsManager{events: dpmsEvents}
 
-	engine := NewEngine(cfg, nil, ac, nil, nil, lm, nil, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, dm, logger, logger)
 	engine.activeSerials["TEST_SERIAL"] = true
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := engine.runLockMonitor(ctx); err != nil {
-			logger.Error("runLockMonitor error", "err", err)
+		if err := engine.runDpmsMonitor(ctx); err != nil {
+			logger.Error("runDpmsMonitor error", "err", err)
 		}
 	}()
 
-	// 1. Send Lock event -> Screen Sleep
-	lockEvents <- lock.SessionLockEvent{Locked: true}
+	// 1. Send DPMS Off event -> Screen Sleep
+	dpmsEvents <- dpms.DpmsEvent{State: "off"}
 	// Wait brief moment for goroutine
 	time.Sleep(50 * time.Millisecond)
 
 	if !ac.getSleepCalled() {
-		t.Error("expected SleepDevice to be called on session lock")
+		t.Error("expected SleepDevice to be called on DPMS off")
 	}
 
-	// 2. Send Unlock event -> Screen Wake
+	// 2. Send DPMS On event -> Screen Wake
 	ac.resetWakeCalled() // reset flag
-	lockEvents <- lock.SessionLockEvent{Locked: false}
+	dpmsEvents <- dpms.DpmsEvent{State: "on"}
 	time.Sleep(50 * time.Millisecond)
 
 	if !ac.getWakeCalled() {
-		t.Error("expected WakeDevice to be called on session unlock")
+		t.Error("expected WakeDevice to be called on DPMS on")
 	}
 }
 
-func TestEngine_LockUnlockNoAppControl(t *testing.T) {
+func TestEngine_DpmsNoAppControl(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	cfg := &config.Config{}
 	cfg.ADB.NoAppControl = true
 
 	ac := &trackingADBClient{}
-	lockEvents := make(chan lock.SessionLockEvent, 5)
-	lm := &manualLockManager{events: lockEvents}
+	dpmsEvents := make(chan dpms.DpmsEvent, 5)
+	dm := &manualDpmsManager{events: dpmsEvents}
 
-	engine := NewEngine(cfg, nil, ac, nil, nil, lm, nil, logger, logger)
+	engine := NewEngine(cfg, nil, ac, nil, nil, nil, nil, dm, logger, logger)
 	engine.activeSerials["TEST_SERIAL"] = true
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := engine.runLockMonitor(ctx); err != nil {
-			logger.Error("runLockMonitor error", "err", err)
+		if err := engine.runDpmsMonitor(ctx); err != nil {
+			logger.Error("runDpmsMonitor error", "err", err)
 		}
 	}()
 
-	// 1. Send Lock event
-	lockEvents <- lock.SessionLockEvent{Locked: true}
+	// 1. Send DPMS Off event
+	dpmsEvents <- dpms.DpmsEvent{State: "off"}
 	time.Sleep(50 * time.Millisecond)
 
 	if ac.getSleepCalled() {
-		t.Error("expected SleepDevice NOT to be called on session lock when NoAppControl is true")
+		t.Error("expected SleepDevice NOT to be called on DPMS off when NoAppControl is true")
 	}
 
-	// 2. Send Unlock event
-	lockEvents <- lock.SessionLockEvent{Locked: false}
+	// 2. Send DPMS On event
+	dpmsEvents <- dpms.DpmsEvent{State: "on"}
 	time.Sleep(50 * time.Millisecond)
 
 	if ac.getWakeCalled() {
-		t.Error("expected WakeDevice NOT to be called on session unlock when NoAppControl is true")
+		t.Error("expected WakeDevice NOT to be called on DPMS on when NoAppControl is true")
 	}
 }
