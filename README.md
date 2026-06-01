@@ -27,7 +27,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🔔 Desktop Notifications Sync (D-Bus)**: Bi-directional synchronization of desktop notifications with the host system D-Bus. Captures outbound notifications via session monitoring, and triggers standard host desktop notifications from inbound WebSocket commands.
 - **🔒 Session Lock & ADB Screen Sync (D-Bus)**: Event-driven interception of host user session lock and unlock status via systemd-logind system bus and screensaver session bus signals. Caches the last known lock state in memory to immediately synchronize newly connected clients. Dynamically coordinates screen power states, leveraging native ADB shell keyevents to explicitly wake (`KEYCODE_WAKEUP`) or sleep (`KEYCODE_SLEEP`) the companion Android device screen synchronously with host display power (DPMS off/on) transitions (fully bypassable via `--no-app-control`).
 - **🔋 Power Profiles Control & Sync (D-Bus)**: Real-time discovery, state monitoring, and direct control of host power profiles (e.g. `power-saver`, `balanced`, `performance`) via standard system D-Bus interfaces targeting `power-profiles-daemon`. Includes full input sanitization boundaries validating inbound profile requests against system-supported power options before execution.
-- **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
+- **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `power`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
 - **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms, mock MPRIS media controls, and simulated power profile states), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
@@ -127,6 +127,7 @@ The `trigger` command supports several event category subcommands with dedicated
 *   `notification`: Dispatches standard mock desktop notifications. Supporting flags: `--summary`, `--body`, `--app-name`, `--icon`, `--timeout`.
 *   `media`: Dispatches player updates. Supporting flags: `--player`, `--status` (Playing/Paused), `--title`, `--artist`, `--volume`, `--position`, `--length`.
 *   `telemetry`: Dispatches metrics reports. Supporting flags: `--cpu-usage`, `--cpu-temp`, `--ram-used`, `--ram-total`, `--gpu-usage`, `--gpu-temp`.
+*   `power`: Dispatches power profile state updates. Supporting flags: `--active`, `--available` (comma-separated list).
 *   `raw`: Dispatches arbitrary passthrough payloads. Supporting flags: `--type` (`-t`), `--data` (`-d`) carrying valid JSON.
 
 *Examples:*
@@ -136,6 +137,9 @@ pc-dashboard-server trigger lock
 
 # Trigger a custom notification toast
 pc-dashboard-server trigger notification --summary "Antigravity Alert" --body "Everything is operating correctly"
+
+# Trigger a mock power profile state
+pc-dashboard-server trigger power --active performance --available power-saver,balanced,performance
 
 # Trigger a raw custom payload
 pc-dashboard-server trigger raw -t custom_sensor -d '{"utilization": 85.5}'
