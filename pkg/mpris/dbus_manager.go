@@ -24,6 +24,7 @@ type DbusMPRISManager struct {
 	ownerToService map[string]string       // maps unique owner to well-known service name
 	eventsChan     chan MediaEvent
 	started        bool
+	extractor      *ArtworkExtractor
 }
 
 // NewDbusMPRISManager connects to the session bus for sending commands.
@@ -38,6 +39,7 @@ func NewDbusMPRISManager(logger *slog.Logger) (*DbusMPRISManager, error) {
 		sendConn:       sendConn,
 		activePlayers:  make(map[string]*PlayerState),
 		ownerToService: make(map[string]string),
+		extractor:      NewArtworkExtractor(logger),
 	}, nil
 }
 
@@ -314,7 +316,7 @@ func (m *DbusMPRISManager) fetchAndRegisterPlayer(serviceName, owner string) {
 	metaVar, err := playerObj.GetProperty("org.mpris.MediaPlayer2.Player.Metadata")
 	if err == nil {
 		if rawMeta, ok := metaVar.Value().(map[string]dbus.Variant); ok {
-			metadata = parseMetadata(rawMeta)
+			metadata = m.parseMetadata(rawMeta)
 		}
 	}
 
@@ -542,7 +544,7 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		}
 		if val, ok := changedProps["Metadata"]; ok {
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
-				player.Metadata = parseMetadata(rawMeta)
+				player.Metadata = m.parseMetadata(rawMeta)
 				updated = true
 				m.logger.Debug("MPRIS player Metadata changed", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
 			}
@@ -617,7 +619,7 @@ func (m *DbusMPRISManager) broadcastState() {
 }
 
 // parseMetadata converts standard D-Bus map variants into clean structures.
-func parseMetadata(metaMap map[string]dbus.Variant) PlayerMetadata {
+func (m *DbusMPRISManager) parseMetadata(metaMap map[string]dbus.Variant) PlayerMetadata {
 	meta := PlayerMetadata{
 		Artist: []string{},
 	}
@@ -645,7 +647,9 @@ func parseMetadata(metaMap map[string]dbus.Variant) PlayerMetadata {
 		meta.Album, _ = v.Value().(string)
 	}
 	if v, ok := metaMap["mpris:artUrl"]; ok {
-		meta.ArtURL, _ = v.Value().(string)
+		if rawURL, ok := v.Value().(string); ok {
+			meta.ArtURL = m.extractor.Extract(rawURL)
+		}
 	}
 	if v, ok := metaMap["mpris:length"]; ok {
 		switch val := v.Value().(type) {
