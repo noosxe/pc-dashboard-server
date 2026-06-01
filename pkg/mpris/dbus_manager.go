@@ -25,6 +25,7 @@ type DbusMPRISManager struct {
 	eventsChan     chan MediaEvent
 	started        bool
 	extractor      *ArtworkExtractor
+	trackArtCache  map[string]string // caches resolved Base64 artwork keyed by track identifier
 }
 
 // NewDbusMPRISManager connects to the session bus for sending commands.
@@ -40,6 +41,7 @@ func NewDbusMPRISManager(logger *slog.Logger) (*DbusMPRISManager, error) {
 		activePlayers:  make(map[string]*PlayerState),
 		ownerToService: make(map[string]string),
 		extractor:      NewArtworkExtractor(logger),
+		trackArtCache:  make(map[string]string),
 	}, nil
 }
 
@@ -366,6 +368,16 @@ func (m *DbusMPRISManager) fetchAndRegisterPlayer(serviceName, owner string) {
 	}
 
 	m.mu.Lock()
+	// Update or resolve metadata artwork cache
+	trackKey := getTrackKey(metadata)
+	if metadata.ArtURL != "" {
+		m.trackArtCache[trackKey] = metadata.ArtURL
+	} else {
+		if cachedArt, ok := m.trackArtCache[trackKey]; ok {
+			metadata.ArtURL = cachedArt
+		}
+	}
+
 	m.activePlayers[owner] = &PlayerState{
 		PlayerName:     playerName,
 		Identity:       friendlyName,
@@ -544,9 +556,24 @@ func (m *DbusMPRISManager) handleDbusSignal(sig *dbus.Signal) {
 		}
 		if val, ok := changedProps["Metadata"]; ok {
 			if rawMeta, ok := val.Value().(map[string]dbus.Variant); ok {
-				player.Metadata = m.parseMetadata(rawMeta)
+				newMeta := m.parseMetadata(rawMeta)
+				trackKey := getTrackKey(newMeta)
+
+				// If the incoming Metadata update has a valid local artwork URL, extract and cache it!
+				if newMeta.ArtURL != "" {
+					m.trackArtCache[trackKey] = newMeta.ArtURL
+				} else {
+					// Otherwise, check if we already have it cached for this exact track identifier
+					if cachedArt, ok := m.trackArtCache[trackKey]; ok {
+						newMeta.ArtURL = cachedArt
+					}
+				}
+
+				player.Metadata = newMeta
 				updated = true
 				m.logger.Debug("MPRIS player Metadata changed", "player", player.PlayerName, "title", player.Metadata.Title, "artist", player.Metadata.Artist, "album", player.Metadata.Album)
+			} else {
+				m.logger.Warn("Metadata key present in signal, but value is not of map[string]dbus.Variant type", "type", fmt.Sprintf("%T", val.Value()))
 			}
 		}
 		m.mu.Unlock()
@@ -663,4 +690,10 @@ func (m *DbusMPRISManager) parseMetadata(metaMap map[string]dbus.Variant) Player
 	}
 
 	return meta
+}
+
+// getTrackKey generates a unique cache key for a media track based on ID, Title, Album, and Artists.
+func getTrackKey(metadata PlayerMetadata) string {
+	artists := strings.Join(metadata.Artist, ",")
+	return fmt.Sprintf("%s|%s|%s|%s", metadata.TrackID, metadata.Title, metadata.Album, artists)
 }
