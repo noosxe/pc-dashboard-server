@@ -19,7 +19,7 @@ func TestTriggerCmdRegistration(t *testing.T) {
 	}
 
 	// Verify child commands
-	expectedChildren := []string{"lock", "unlock", "notification", "media", "telemetry", "raw"}
+	expectedChildren := []string{"lock", "unlock", "notification", "media", "telemetry", "raw", "power"}
 	for _, exp := range expectedChildren {
 		childFound := false
 		for _, child := range TriggerCmd.Commands() {

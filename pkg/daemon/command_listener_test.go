@@ -88,6 +88,47 @@ func TestEngine_CommandListenerHandshake(t *testing.T) {
 		t.Errorf("expected cached lastLockState Locked=true, got %v", cachedState.Locked)
 	}
 
+	// Test power profile state trigger
+	conn3, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to dial command socket for power profile: %v", err)
+	}
+
+	powerReq := UDSRequest{
+		Type: "power_profile_state",
+		Data: json.RawMessage(`{"active_profile": "performance", "available_profiles": [{"profile": "balanced"}, {"profile": "performance"}]}`),
+	}
+
+	if err := json.NewEncoder(conn3).Encode(powerReq); err != nil {
+		t.Fatalf("failed to write power profile request: %v", err)
+	}
+
+	var powerResp UDSResponse
+	if err := json.NewDecoder(conn3).Decode(&powerResp); err != nil {
+		t.Fatalf("failed to read power profile response: %v", err)
+	}
+	conn3.Close()
+
+	if !powerResp.Success {
+		t.Errorf("expected power profile trigger success=true, got success=false, error=%q", powerResp.Error)
+	}
+
+	// Verify the power state caching inside engine
+	engine.powerStateMu.RLock()
+	cachedPowerState := engine.lastPowerState
+	engine.powerStateMu.RUnlock()
+
+	if cachedPowerState == nil {
+		t.Errorf("expected lastPowerState to be cached, got nil")
+	} else {
+		if cachedPowerState.ActiveProfile != "performance" {
+			t.Errorf("expected active profile to be 'performance', got %q", cachedPowerState.ActiveProfile)
+		}
+		if len(cachedPowerState.AvailableProfiles) != 2 {
+			t.Errorf("expected 2 available profiles, got %d", len(cachedPowerState.AvailableProfiles))
+		}
+	}
+
 	// 4. Send a command request with malformed inner data
 	conn2, err := net.Dial("unix", socketPath)
 	if err != nil {

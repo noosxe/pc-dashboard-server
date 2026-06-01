@@ -14,6 +14,7 @@ import (
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
 	"github.com/noosxe/pc-dashboard-server/pkg/mpris"
 	"github.com/noosxe/pc-dashboard-server/pkg/notifications"
+	"github.com/noosxe/pc-dashboard-server/pkg/power"
 	"github.com/spf13/cobra"
 )
 
@@ -197,6 +198,41 @@ var TelemetryCmd = &cobra.Command{
 	},
 }
 
+// Power variables
+var (
+	powerActiveProfile     string
+	powerAvailableProfiles string
+)
+
+// PowerCmd triggers a mock power profile state event
+var PowerCmd = &cobra.Command{
+	Use:   "power",
+	Short: "Trigger a mock power profile state event",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var profiles []power.PowerProfile
+		if powerAvailableProfiles != "" {
+			parts := strings.Split(powerAvailableProfiles, ",")
+			for _, part := range parts {
+				trimmed := strings.TrimSpace(part)
+				if trimmed != "" {
+					profiles = append(profiles, power.PowerProfile{Profile: trimmed})
+				}
+			}
+		}
+
+		ev := power.PowerProfileState{
+			ActiveProfile:     powerActiveProfile,
+			AvailableProfiles: profiles,
+		}
+
+		data, err := json.Marshal(ev)
+		if err != nil {
+			return err
+		}
+		return sendUDSRequest(triggerSocketPath, daemon.UDSRequest{Type: "power_profile_state", Data: data})
+	},
+}
+
 // Raw variables
 var (
 	rawType string
@@ -268,6 +304,10 @@ func init() {
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemUsed, "gpu-mem-used", 2*1024*1024*1024, "GPU VRAM bytes used")
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemTotal, "gpu-mem-total", 8*1024*1024*1024, "GPU VRAM total capacity")
 
+	// Power subcommand flags
+	PowerCmd.Flags().StringVar(&powerActiveProfile, "active", "balanced", "Active power profile (e.g. 'power-saver', 'balanced', 'performance')")
+	PowerCmd.Flags().StringVar(&powerAvailableProfiles, "available", "power-saver,balanced,performance", "Comma-separated list of available power profiles")
+
 	// Raw subcommand flags
 	RawCmd.Flags().StringVarP(&rawType, "type", "t", "", "Custom type wrapper name (e.g. 'custom_metrics')")
 	RawCmd.Flags().StringVarP(&rawData, "data", "d", "", "Valid JSON string payload (e.g. '{\"key\": \"val\"}')")
@@ -278,6 +318,7 @@ func init() {
 	TriggerCmd.AddCommand(NotificationCmd)
 	TriggerCmd.AddCommand(MediaCmd)
 	TriggerCmd.AddCommand(TelemetryCmd)
+	TriggerCmd.AddCommand(PowerCmd)
 	TriggerCmd.AddCommand(RawCmd)
 
 	// Register trigger to RootCmd
