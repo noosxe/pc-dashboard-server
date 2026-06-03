@@ -66,21 +66,23 @@ The Telemetry engine gathers host statistics every 1.0 second (hardcoded interva
 *   **Frequency**: Read in MHz representing active clock speeds across cores.
     *   *Primary Route*: Average scaling frequencies from `/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq` (reported in kHz, divided by 1000).
     *   *Secondary Route*: Fallback to `cpu.Info()` from `github.com/shirou/gopsutil/v4/cpu`, averaging the `Mhz` field from all returned `InfoStat` structs.
+*   **Power**: Package-level power consumption in Watts. Calculated by polling `/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj` (which accumulates microjoules consumed) at standard intervals and computing $\Delta \text{energy\_uj} / (\Delta t \times 1,000,000)$. Supported natively on modern Linux kernels (5.11+) for both Intel and AMD Zen-based processors. Requires specific file access configuration to be read by a non-root daemon user.
 
 #### B. Memory (RAM) Statistics
 *   **Total / Used / Available**: Read in bytes.
 *   **Utilization**: Total RAM utilization percentage.
 *   **Retrieval**: Captured from `/proc/meminfo` via `github.com/shirou/gopsutil/v4/mem`.
 
-#### C. Graphics Processor (GPU, VRAM & Frequency) Statistics
+#### C. Graphics Processor (GPU, VRAM, Frequency & Power) Statistics
 The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics drivers.
 *   **NVIDIA GPUs**:
-    *   *Primary Method*: Communicate with the local **NVML (NVIDIA Management Library)** using standard Go API bindings (or lightweight CGO-free bindings) to extract core GPU utilization percentage, VRAM utilization, and temperature.
-    *   *Fallback Method*: Execute `nvidia-smi` as an external command, querying graphic clock frequency along with existing metrics:
+    *   *Primary Method*: Communicate with the local **NVML (NVIDIA Management Library)** using standard Go API bindings (or lightweight CGO-free bindings) to extract core GPU utilization percentage, VRAM utilization, temperature, and power usage (`nvmlDeviceGetPowerUsage`).
+    *   *Fallback Method*: Execute `nvidia-smi` as an external command, querying graphic clock frequency and power draw along with existing metrics:
         ```bash
-        nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics --format=csv,noheader,nounits
+        nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw --format=csv,noheader,nounits
         ```
 *   **AMD & Intel GPUs (sysfs / hwmon)**:
+    *   *GPU Power Draw*: Read `/sys/class/drm/card0/device/hwmon/hwmon*/power1_average` (or `power1_input`, reported in microwatts; divided by 1,000,000).
     *   *GPU Busy Percentage*: Read `/sys/class/drm/card0/device/gpu_busy_percent` (or `/sys/class/drm/card0/device/pm_info`).
     *   *VRAM Bytes Used*: Read `/sys/class/drm/card0/device/mem_info_vram_used`.
     *   *VRAM Bytes Total*: Read `/sys/class/drm/card0/device/mem_info_vram_total`.
@@ -132,14 +134,16 @@ Pushed automatically once every second.
     "cpu": {
       "usage_percent": 18.7,
       "temp_celsius": 49.0,
-      "freq_mhz": 3200.0
+      "freq_mhz": 3200.0,
+      "power_watts": 45.2
     },
     "gpu": {
       "usage_percent": 41.0,
       "temp_celsius": 58.0,
       "vram_used_bytes": 3121561600,
       "vram_total_bytes": 8589934592,
-      "freq_mhz": 1200.0
+      "freq_mhz": 1200.0,
+      "power_watts": 125.5
     },
     "ram": {
       "used_bytes": 14212567040,
@@ -458,3 +462,5 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 10. **Unix Domain Socket Isolation & Access Control**: The UDS listener restricts socket file permissions strictly to owner-only access (`0600` or `0700` directories) to prevent multi-user system privilege escalation or unauthorized local telemetry injections. All incoming payload keys are strictly unmarshalled and validated against strict schemas, blocking memory injection or structural corruption before distribution.
 11. **Power Profile Input Sanitization**: Power profile selection commands received via WebSockets are strictly validated against the read-only list of available profiles fetched from the system D-Bus before execution. Any unrecognized strings are immediately dropped, preventing D-Bus property injection or arbitrary system parameter manipulation.
 12. **Bluetooth Passive Monitoring & Privacy**: The Bluetooth monitoring module operates in a strictly read-only, passive mode. It must never invoke state-mutating BlueZ methods (`StartDiscovery`, `Connect`, `Disconnect`, `RemoveDevice`, `Pair`, etc.) under any circumstances. Outbound `bluetooth_state` payloads are limited to display-relevant fields (`address`, `name`, `alias`, `class`, `battery_percent`, `rssi`, `connected`, `paired`, `trusted`); raw GATT UUIDs, manufacturer data, and service records are excluded to minimize hardware fingerprinting exposure. Bluetooth MAC addresses are logged only at `debug` level to prevent hardware identifier leakage in production journal output.
+13. **Unprivileged CPU Power Telemetry Safeties**: When reading CPU power consumption via RAPL sysfs attributes (`energy_uj`), the daemon must operate in a strictly read-only mode. Elevated privilege configurations (such as configuring world-readable files via `sysfsutils` or group ownership/permissions via `udev` rules) are external system configurations; the daemon itself must never attempt to execute `chmod`, `chown`, or modify file system permissions dynamically. If read permissions are absent, the daemon must gracefully fall back by omitting CPU power fields from telemetry frames rather than failing.
+
