@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,10 +20,13 @@ import (
 
 // HostMetricsReader reads telemetry from physical Linux hosts.
 type HostMetricsReader struct {
-	logger       *slog.Logger
-	mu           sync.Mutex
-	lastCPUTimes cpu.TimesStat
-	hasCPUTimes  bool
+	logger         *slog.Logger
+	mu             sync.Mutex
+	lastCPUTimes   cpu.TimesStat
+	hasCPUTimes    bool
+	lastEnergy     uint64
+	lastEnergyTime time.Time
+	hasEnergy      bool
 }
 
 // NewHostMetricsReader instantiates a production MetricsReader.
@@ -61,6 +65,30 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 
 	// Retrieve CPU frequency in MHz
 	m.FreqMHz = readCPUFrequency()
+
+	// Retrieve CPU power in Watts via RAPL energy_uj
+	var power float64
+	energyFile := "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
+	energyBytes, err := os.ReadFile(energyFile)
+	if err == nil {
+		energyVal, err := strconv.ParseUint(strings.TrimSpace(string(energyBytes)), 10, 64)
+		if err == nil {
+			now := time.Now()
+			if r.hasEnergy && now.After(r.lastEnergyTime) {
+				duration := now.Sub(r.lastEnergyTime).Seconds()
+				if duration > 0 {
+					if energyVal >= r.lastEnergy {
+						diff := energyVal - r.lastEnergy
+						power = float64(diff) / (duration * 1000000.0)
+					}
+				}
+			}
+			r.lastEnergy = energyVal
+			r.lastEnergyTime = now
+			r.hasEnergy = true
+		}
+	}
+	m.PowerWatts = math.Round(power*100) / 100
 
 	return m, nil
 }
@@ -232,7 +260,7 @@ func readNvidiaGPU() (GPUMetrics, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "nvidia-smi",
-		"--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics",
+		"--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw",
 		"--format=csv,noheader,nounits")
 
 	var stdout, stderr bytes.Buffer
@@ -273,6 +301,13 @@ func readNvidiaGPU() (GPUMetrics, error) {
 		freq, err := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64)
 		if err == nil {
 			m.FreqMHz = freq
+		}
+	}
+
+	if len(parts) >= 6 {
+		power, err := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+		if err == nil {
+			m.PowerWatts = power
 		}
 	}
 
@@ -337,6 +372,26 @@ func readSysfsGPU() (GPUMetrics, error) {
 		if err == nil {
 			if val, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
 				m.TempCelsius = val / 1000.0
+			}
+		}
+	}
+
+	// 4.5. GPU Power Draw
+	powerGlob := filepath.Join(deviceDir, "hwmon", "hwmon*", "power1_average")
+	if powerMatches, err := filepath.Glob(powerGlob); err == nil && len(powerMatches) > 0 {
+		if powerBytes, err := os.ReadFile(powerMatches[0]); err == nil {
+			if val, err := strconv.ParseFloat(strings.TrimSpace(string(powerBytes)), 64); err == nil {
+				m.PowerWatts = math.Round((val/1000000.0)*100) / 100
+			}
+		}
+	} else {
+		// Fallback to power1_input
+		powerGlobInput := filepath.Join(deviceDir, "hwmon", "hwmon*", "power1_input")
+		if powerMatchesInput, err := filepath.Glob(powerGlobInput); err == nil && len(powerMatchesInput) > 0 {
+			if powerBytes, err := os.ReadFile(powerMatchesInput[0]); err == nil {
+				if val, err := strconv.ParseFloat(strings.TrimSpace(string(powerBytes)), 64); err == nil {
+					m.PowerWatts = math.Round((val/1000000.0)*100) / 100
+				}
 			}
 		}
 	}
