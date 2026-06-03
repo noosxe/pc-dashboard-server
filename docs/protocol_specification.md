@@ -105,20 +105,22 @@ Pushed continuously every **1000ms**.
       "properties": {
         "cpu": {
           "type": "object",
-          "required": ["usage_percent", "temp_celsius"],
+          "required": ["usage_percent", "temp_celsius", "power_watts"],
           "properties": {
             "usage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
-            "temp_celsius": { "type": "number" }
+            "temp_celsius": { "type": "number" },
+            "power_watts": { "type": "number", "minimum": 0 }
           }
         },
         "gpu": {
           "type": "object",
-          "required": ["usage_percent", "temp_celsius", "vram_used_bytes", "vram_total_bytes"],
+          "required": ["usage_percent", "temp_celsius", "vram_used_bytes", "vram_total_bytes", "power_watts"],
           "properties": {
             "usage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
             "temp_celsius": { "type": "number" },
             "vram_used_bytes": { "type": "integer", "minimum": 0 },
-            "vram_total_bytes": { "type": "integer", "minimum": 0 }
+            "vram_total_bytes": { "type": "integer", "minimum": 0 },
+            "power_watts": { "type": "number", "minimum": 0 }
           }
         },
         "ram": {

@@ -238,14 +238,16 @@ The daemon pushes structured telemetry payloads every second to all connected We
     "cpu": {
       "usage_percent": 18.7,
       "temp_celsius": 49.0,
-      "freq_mhz": 3200.0
+      "freq_mhz": 3200.0,
+      "power_watts": 45.2
     },
     "gpu": {
       "usage_percent": 41.0,
       "temp_celsius": 58.0,
       "vram_used_bytes": 3121561600,
       "vram_total_bytes": 8589934592,
-      "freq_mhz": 1200.0
+      "freq_mhz": 1200.0,
+      "power_watts": 125.5
     },
     "ram": {
       "used_bytes": 14212567040,
@@ -321,7 +323,14 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. ⚡ Additional Planned Enhancements
+### 3. 🔌 CPU/GPU Power Consumption Telemetry 🟡 *[Design Phase]*
+Exposes package-level CPU power draw and active GPU power consumption in Watts via the outbound telemetry stream.
+- **CPU Power**: Polls cumulative energy counters (`energy_uj`) under `/sys/class/powercap/intel-rapl` to calculate average power draw in Watts over the delta time interval. Supports both Intel and AMD Zen CPUs natively on modern kernels.
+- **GPU Power**: Integrates with local NVML / `nvidia-smi` parameters (`power.draw`) for NVIDIA GPUs, and queries `sysfs` hwmon interface paths (`power1_average` or `power1_input`) for AMD/Intel graphics cards.
+- **Outbound Stream**: Appends the `"power_watts"` field to the `"cpu"` and `"gpu"` telemetry objects inside the WebSocket message payload.
+- *Status*: Core architecture, protocol schemas, and system permissions boundaries established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
