@@ -5,6 +5,7 @@ type CPUMetrics struct {
 	UsagePercent float64 `json:"usage_percent"`
 	TempCelsius  float64 `json:"temp_celsius"`
 	FreqMHz      float64 `json:"freq_mhz"`
+	PowerWatts   float64 `json:"power_watts"`
 }
 
 // RAMMetrics holds physical memory telemetry.
@@ -21,6 +22,7 @@ type GPUMetrics struct {
 	VramUsedBytes  uint64  `json:"vram_used_bytes"`
 	VramTotalBytes uint64  `json:"vram_total_bytes"`
 	FreqMHz        float64 `json:"freq_mhz"`
+	PowerWatts     float64 `json:"power_watts"`
 }
 
 // SystemMetrics combines all gathered hardware statistics.

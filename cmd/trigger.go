@@ -176,6 +176,7 @@ var (
 	telCPUUsage    float64
 	telCPUTemp     float64
 	telCPUFreq     float64
+	telCPUPower    float64
 	telRAMUsed     uint64
 	telRAMTotal    uint64
 	telRAMPerc     float64
@@ -184,6 +185,7 @@ var (
 	telGPUFreq     float64
 	telGPUMemUsed  uint64
 	telGPUMemTotal uint64
+	telGPUPower    float64
 )
 
 // TelemetryCmd triggers system telemetry metrics updates
@@ -200,6 +202,7 @@ var TelemetryCmd = &cobra.Command{
 				UsagePercent: telCPUUsage,
 				TempCelsius:  telCPUTemp,
 				FreqMHz:      telCPUFreq,
+				PowerWatts:   telCPUPower,
 			},
 			RAM: metrics.RAMMetrics{
 				UsedBytes:  telRAMUsed,
@@ -212,6 +215,7 @@ var TelemetryCmd = &cobra.Command{
 				VramUsedBytes:  telGPUMemUsed,
 				VramTotalBytes: telGPUMemTotal,
 				FreqMHz:        telGPUFreq,
+				PowerWatts:     telGPUPower,
 			},
 		}
 
@@ -322,12 +326,14 @@ func init() {
 	TelemetryCmd.Flags().Float64Var(&telCPUUsage, "cpu-usage", 25.5, "Overall CPU busy percentage")
 	TelemetryCmd.Flags().Float64Var(&telCPUTemp, "cpu-temp", 45.0, "Overall CPU core packages temperature")
 	TelemetryCmd.Flags().Float64Var(&telCPUFreq, "cpu-freq", 2500.0, "CPU core active scaling frequency in MHz")
+	TelemetryCmd.Flags().Float64Var(&telCPUPower, "cpu-power", 35.0, "CPU package power consumption in Watts")
 	TelemetryCmd.Flags().Uint64Var(&telRAMUsed, "ram-used", 8*1024*1024*1024, "Total system RAM bytes used")
 	TelemetryCmd.Flags().Uint64Var(&telRAMTotal, "ram-total", 16*1024*1024*1024, "Total system RAM bytes capacity")
 	TelemetryCmd.Flags().Float64Var(&telRAMPerc, "ram-percentage", 0, "Specific RAM usage percentage (optional)")
 	TelemetryCmd.Flags().Float64Var(&telGPUUsage, "gpu-usage", 15.0, "Overall GPU busy percentage")
 	TelemetryCmd.Flags().Float64Var(&telGPUTemp, "gpu-temp", 50.0, "Overall GPU temperature")
 	TelemetryCmd.Flags().Float64Var(&telGPUFreq, "gpu-freq", 1200.0, "GPU graphics engine active frequency in MHz")
+	TelemetryCmd.Flags().Float64Var(&telGPUPower, "gpu-power", 75.0, "GPU active power draw in Watts")
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemUsed, "gpu-mem-used", 2*1024*1024*1024, "GPU VRAM bytes used")
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemTotal, "gpu-mem-total", 8*1024*1024*1024, "GPU VRAM total capacity")
 
