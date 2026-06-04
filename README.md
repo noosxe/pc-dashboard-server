@@ -48,7 +48,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
   - Ensure the ADB server is started: `adb start-server`
 - **CPU Power Telemetry Permissions (Optional)**: Accessing RAPL energy counters on modern Linux kernels is restricted to root by default. To collect CPU power as a non-root user (when running as a systemd user service), configure permissions using either of these methods:
   - **Option A: `sysfsutils` (File Mode Persistence)**:
-    Install `sysfsutils` (`sudo apt install sysfsutils`) and add the following lines to `/etc/sysfs.conf`:
+    Install `sysfsutils` (`sudo apt install sysfsutils` on Debian/Ubuntu, `sudo dnf install sysfsutils` on Fedora, or `sudo pacman -S sysfsutils` on Arch Linux) and add the following lines to `/etc/sysfs.conf`:
     ```text
     mode class/powercap/intel-rapl:0/energy_uj = 0444
     mode class/powercap/intel-rapl:0/intel-rapl:0:0/energy_uj = 0444
