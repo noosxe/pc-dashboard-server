@@ -54,10 +54,19 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
     mode class/powercap/intel-rapl:0/intel-rapl:0:0/energy_uj = 0444
     ```
   - **Option B: Udev Rules (Group-Based Access)**:
-    Create a dedicated group (e.g., `rapl`), assign your user to it, and create a udev rules file `/etc/udev/rules.d/70-intel-rapl.rules`:
-    ```text
-    SUBSYSTEM=="powercap", ACTION=="add|change", KERNEL=="intel-rapl:*", RUN+="/usr/bin/chgrp rapl /sys/%p/energy_uj", RUN+="/usr/bin/chmod 0640 /sys/%p/energy_uj"
-    ```
+    1. Create a dedicated group (e.g., `rapl`):
+       ```bash
+       sudo groupadd rapl
+       ```
+    2. Add the user running the daemon (e.g., your active desktop user) to the new group:
+       ```bash
+       sudo usermod -aG rapl $USER
+       ```
+       *(Note: You will need to log out and log back in for the new group membership to take effect).*
+    3. Create a udev rules file at `/etc/udev/rules.d/70-intel-rapl.rules` to assign read permissions to the `rapl` group:
+       ```text
+       SUBSYSTEM=="powercap", ACTION=="add|change", KERNEL=="intel-rapl:*", RUN+="/usr/bin/chgrp rapl /sys/%p/energy_uj", RUN+="/usr/bin/chmod 0640 /sys/%p/energy_uj"
+       ```
   *(Note: If no permissions are configured, the daemon will gracefully omit the `"power_watts"` CPU metric instead of failing).*
 
 ### 1. Primary Installation (`go install`)
