@@ -46,6 +46,19 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **Android Debug Bridge (ADB)**: Standard `adb` utility installed on the host.
   - On Debian/Ubuntu: `sudo apt install adb`
   - Ensure the ADB server is started: `adb start-server`
+- **CPU Power Telemetry Permissions (Optional)**: Accessing RAPL energy counters on modern Linux kernels is restricted to root by default. To collect CPU power as a non-root user (when running as a systemd user service), configure permissions using either of these methods:
+  - **Option A: `sysfsutils` (File Mode Persistence)**:
+    Install `sysfsutils` (`sudo apt install sysfsutils`) and add the following lines to `/etc/sysfs.conf`:
+    ```text
+    mode class/powercap/intel-rapl:0/energy_uj = 0444
+    mode class/powercap/intel-rapl:0/intel-rapl:0:0/energy_uj = 0444
+    ```
+  - **Option B: Udev Rules (Group-Based Access)**:
+    Create a dedicated group (e.g., `rapl`), assign your user to it, and create a udev rules file `/etc/udev/rules.d/70-intel-rapl.rules`:
+    ```text
+    SUBSYSTEM=="powercap", ACTION=="add|change", KERNEL=="intel-rapl:*", RUN+="/usr/bin/chgrp rapl /sys/%p/energy_uj", RUN+="/usr/bin/chmod 0640 /sys/%p/energy_uj"
+    ```
+  *(Note: If no permissions are configured, the daemon will gracefully omit the `"power_watts"` CPU metric instead of failing).*
 
 ### 1. Primary Installation (`go install`)
 
