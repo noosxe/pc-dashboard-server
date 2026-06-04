@@ -46,6 +46,32 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **Android Debug Bridge (ADB)**: Standard `adb` utility installed on the host.
   - On Debian/Ubuntu: `sudo apt install adb`
   - Ensure the ADB server is started: `adb start-server`
+- **CPU Power Telemetry Permissions (Optional)**: Accessing RAPL energy counters on modern Linux kernels is restricted to root by default. To collect CPU power as a non-root user (when running as a systemd user service), configure permissions using either of these methods:
+  - **Option A: `sysfsutils` (File Mode Persistence)**:
+    Install `sysfsutils` (`sudo apt install sysfsutils` on Debian/Ubuntu, `sudo dnf install sysfsutils` on Fedora, or `sudo pacman -S sysfsutils` on Arch Linux) and add the following lines to `/etc/sysfs.conf`:
+    ```text
+    mode class/powercap/intel-rapl:0/energy_uj = 0444
+    mode class/powercap/intel-rapl:0/intel-rapl:0:0/energy_uj = 0444
+    ```
+  - **Option B: Udev Rules (Group-Based Access)**:
+    1. Create a dedicated group (e.g., `rapl`):
+       ```bash
+       sudo groupadd rapl
+       ```
+    2. Add the user running the daemon (e.g., your active desktop user) to the new group:
+       ```bash
+       sudo usermod -aG rapl $USER
+       ```
+       *(Note: You will need to log out and log back in for the new group membership to take effect).*
+    3. Create a udev rules file at `/etc/udev/rules.d/70-intel-rapl.rules` to assign read permissions to the `rapl` group:
+       ```text
+       SUBSYSTEM=="powercap", ACTION=="add|change", KERNEL=="intel-rapl:*", RUN+="/usr/bin/chgrp rapl /sys/%p/energy_uj", RUN+="/usr/bin/chmod 0640 /sys/%p/energy_uj"
+       ```
+    4. Reload and trigger the udev rules to apply the permissions immediately (without rebooting):
+       ```bash
+       sudo udevadm control --reload-rules && sudo udevadm trigger
+       ```
+  *(Note: If no permissions are configured, the daemon will gracefully omit the `"power_watts"` CPU metric instead of failing).*
 
 ### 1. Primary Installation (`go install`)
 
