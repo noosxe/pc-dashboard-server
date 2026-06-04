@@ -67,6 +67,10 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
        ```text
        SUBSYSTEM=="powercap", ACTION=="add|change", KERNEL=="intel-rapl:*", RUN+="/usr/bin/chgrp rapl /sys/%p/energy_uj", RUN+="/usr/bin/chmod 0640 /sys/%p/energy_uj"
        ```
+    4. Reload and trigger the udev rules to apply the permissions immediately (without rebooting):
+       ```bash
+       sudo udevadm control --reload-rules && sudo udevadm trigger
+       ```
   *(Note: If no permissions are configured, the daemon will gracefully omit the `"power_watts"` CPU metric instead of failing).*
 
 ### 1. Primary Installation (`go install`)
