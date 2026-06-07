@@ -114,13 +114,15 @@ Pushed continuously every **1000ms**.
         },
         "gpu": {
           "type": "object",
-          "required": ["usage_percent", "temp_celsius", "vram_used_bytes", "vram_total_bytes", "power_watts"],
+          "required": ["usage_percent", "temp_celsius", "vram_used_bytes", "vram_total_bytes", "power_watts", "vram_temp_celsius", "vram_freq_mhz"],
           "properties": {
             "usage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
             "temp_celsius": { "type": "number" },
             "vram_used_bytes": { "type": "integer", "minimum": 0 },
             "vram_total_bytes": { "type": "integer", "minimum": 0 },
-            "power_watts": { "type": "number", "minimum": 0 }
+            "power_watts": { "type": "number", "minimum": 0 },
+            "vram_temp_celsius": { "type": "number", "description": "VRAM memory temperature in Celsius; 0.0 if unsupported" },
+            "vram_freq_mhz": { "type": "number", "minimum": 0, "description": "VRAM memory clock speed in MHz; 0.0 if unsupported" }
           }
         },
         "ram": {
