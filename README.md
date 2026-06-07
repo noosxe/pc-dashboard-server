@@ -21,6 +21,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **📊 Telemetry Support Flags**: Automatically determines which system telemetry items (CPU usage/temp/freq/power, RAM stats, and GPU/VRAM sensors) are supported by the host machine's hardware, drivers, and permissions. Exposes these details via a structured `flags` block in the telemetry payload to enable dynamic UI adjustments on dashboard clients, with full command-line trigger customization.
 - **🚀 CPU/GPU/VRAM Frequency Telemetry**: Dynamically extracts active core speeds, graphics engine clock rates, and VRAM memory clock rates (in MHz) every second. Queries average active CPU frequencies via Linux `/sys` scaling interfaces or `gopsutil` CPU core fallbacks. For graphics processors, utilizes custom active frequency sysfs interfaces or dynamic DPM system clock registers for AMD/Intel, alongside CGO-free NVML bindings or structured `nvidia-smi` parses for NVIDIA. Includes full integration with local Unix Domain Socket (UDS) trigger capabilities (`--cpu-freq`, `--gpu-freq`, and `--gpu-vram-freq`).
 - **🔌 CPU/GPU/VRAM Power & Thermal Telemetry**: Gathers package-level CPU power draw, active GPU power consumption, GPU core/edge temperature, and VRAM memory/junction temperature. Accesses CPU power via the unified Linux RAPL sysfs interface (`/sys/class/powercap/intel-rapl`), which natively maps to both Intel and AMD Zen-based processors on modern kernels. For graphics processors, leverages NVML or `nvidia-smi` parameters for NVIDIA GPUs, and queries `sysfs` hwmon paths for AMD/Intel graphics cards, including reading VRAM junction temperatures via hwmon labels (e.g. `temp*_label` matching `mem`, `vram`, or `junction`). Includes a graceful fallback if permissions are restricted (omitting power/thermal fields instead of crashing) and full integration with local UDS trigger commands (`--cpu-power`, `--gpu-power`, and `--gpu-vram-temp`).
+- **📊 Per-Core CPU Utilization Telemetry**: Dynamically extracts individual utilization percentages for each logical CPU core every second. Queries CPU times via `gopsutil` (`cpu.Times(percpu = true)`) to calculate core-by-core utilization. Exposes support capability flags (`cpu_cores_usage_supported`) in the telemetry flags block to allow companion apps to adapt their interfaces. Fully integrated with local UDS command triggers (`--cpu-cores-usage` and `--cpu-cores-usage-supported`).
 - **🔌 Native ADB Hotplug Tracking**: Directly communicates with the ADB server (`127.0.0.1:5037`) over TCP sockets to monitor USB connections dynamically.
 - **📱 Automatic Bootstrapping & Bypassing**:
   - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
@@ -414,14 +415,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. 📊 Per-Core CPU Utilization Telemetry 🟡 *[Design Phase]*
-Expose individual utilization percentages for each logical CPU core in the telemetry payload, allowing the companion Android app to display multi-core charts or core-by-core status bars.
-- **Outbound Stream**: Include a new array field `cores_usage_percent` in the CPU telemetry block and add a `cpu_cores_usage_supported` capability flag.
-- **Mechanisms**: Dynamically queries per-core CPU times utilizing `github.com/shirou/gopsutil/v4/cpu` by passing `percpu = true`.
-- **Emulation Support**: Simulates 8 logical cores with realistic sine-wave patterns and phase shifts to test UI behaviors.
-- *Status*: Schema defined and metrics parsing design established. Awaiting review.
-
-### 10. ⚡ Additional Planned Enhancements
+### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

@@ -20,14 +20,16 @@ import (
 
 // HostMetricsReader reads telemetry from physical Linux hosts.
 type HostMetricsReader struct {
-	logger         *slog.Logger
-	mu             sync.Mutex
-	lastCPUTimes   cpu.TimesStat
-	hasCPUTimes    bool
-	lastEnergy     uint64
-	lastEnergyTime time.Time
-	hasEnergy      bool
-	flags          TelemetryFlags
+	logger            *slog.Logger
+	mu                sync.Mutex
+	lastCPUTimes      cpu.TimesStat
+	hasCPUTimes       bool
+	lastCoresCPUTimes []cpu.TimesStat
+	hasCoresCPUTimes  bool
+	lastEnergy        uint64
+	lastEnergyTime    time.Time
+	hasEnergy         bool
+	flags             TelemetryFlags
 }
 
 // NewHostMetricsReader instantiates a production MetricsReader.
@@ -39,6 +41,10 @@ func NewHostMetricsReader(logger *slog.Logger) *HostMetricsReader {
 	if times, err := cpu.Times(false); err == nil && len(times) > 0 {
 		r.lastCPUTimes = times[0]
 		r.hasCPUTimes = true
+	}
+	if coresTimes, err := cpu.Times(true); err == nil && len(coresTimes) > 0 {
+		r.lastCoresCPUTimes = coresTimes
+		r.hasCoresCPUTimes = true
 	}
 	return r
 }
@@ -60,6 +66,23 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 		}
 		r.lastCPUTimes = curr
 		r.hasCPUTimes = true
+	}
+
+	// Calculate per-core CPU usage percent
+	coresTimes, coresErr := cpu.Times(true)
+	r.flags.CPUCoresUsageSupported = coresErr == nil && len(coresTimes) > 0
+	if r.flags.CPUCoresUsageSupported {
+		m.CoresUsagePercent = make([]float64, len(coresTimes))
+		if r.hasCoresCPUTimes && len(coresTimes) == len(r.lastCoresCPUTimes) {
+			for i, currCore := range coresTimes {
+				usage := calculateCPUUsage(r.lastCoresCPUTimes[i], currCore)
+				m.CoresUsagePercent[i] = math.Round(usage*100) / 100
+			}
+		}
+		r.lastCoresCPUTimes = coresTimes
+		r.hasCoresCPUTimes = true
+	} else {
+		m.CoresUsagePercent = []float64{}
 	}
 
 	// Retrieve CPU temperature from sysfs / hwmon

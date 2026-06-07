@@ -2,10 +2,11 @@ package metrics
 
 // CPUMetrics holds processor performance telemetry.
 type CPUMetrics struct {
-	UsagePercent float64 `json:"usage_percent"`
-	TempCelsius  float64 `json:"temp_celsius"`
-	FreqMHz      float64 `json:"freq_mhz"`
-	PowerWatts   float64 `json:"power_watts"`
+	UsagePercent      float64   `json:"usage_percent"`
+	CoresUsagePercent []float64 `json:"cores_usage_percent"`
+	TempCelsius       float64   `json:"temp_celsius"`
+	FreqMHz           float64   `json:"freq_mhz"`
+	PowerWatts        float64   `json:"power_watts"`
 }
 
 // RAMMetrics holds physical memory telemetry.
@@ -45,21 +46,22 @@ type GPUMetrics struct {
 
 // TelemetryFlags represents supported telemetry features on the host machine.
 type TelemetryFlags struct {
-	CPUUsageSupported    bool `json:"cpu_usage_supported"`
-	CPUTempSupported     bool `json:"cpu_temp_supported"`
-	CPUFreqSupported     bool `json:"cpu_freq_supported"`
-	CPUPowerSupported    bool `json:"cpu_power_supported"`
-	RAMSupported         bool `json:"ram_supported"`
-	SwapSupported        bool `json:"swap_supported"`
-	ZRAMSupported        bool `json:"zram_supported"`
-	GPUSupported         bool `json:"gpu_supported"`
-	GPUUsageSupported    bool `json:"gpu_usage_supported"`
-	GPUTempSupported     bool `json:"gpu_temp_supported"`
-	GPUVramSupported     bool `json:"gpu_vram_supported"`
-	GPUFreqSupported     bool `json:"gpu_freq_supported"`
-	GPUPowerSupported    bool `json:"gpu_power_supported"`
-	GPUVramTempSupported bool `json:"gpu_vram_temp_supported"`
-	GPUVramFreqSupported bool `json:"gpu_vram_freq_supported"`
+	CPUUsageSupported      bool `json:"cpu_usage_supported"`
+	CPUCoresUsageSupported bool `json:"cpu_cores_usage_supported"`
+	CPUTempSupported       bool `json:"cpu_temp_supported"`
+	CPUFreqSupported       bool `json:"cpu_freq_supported"`
+	CPUPowerSupported      bool `json:"cpu_power_supported"`
+	RAMSupported           bool `json:"ram_supported"`
+	SwapSupported          bool `json:"swap_supported"`
+	ZRAMSupported          bool `json:"zram_supported"`
+	GPUSupported           bool `json:"gpu_supported"`
+	GPUUsageSupported      bool `json:"gpu_usage_supported"`
+	GPUTempSupported       bool `json:"gpu_temp_supported"`
+	GPUVramSupported       bool `json:"gpu_vram_supported"`
+	GPUFreqSupported       bool `json:"gpu_freq_supported"`
+	GPUPowerSupported      bool `json:"gpu_power_supported"`
+	GPUVramTempSupported   bool `json:"gpu_vram_temp_supported"`
+	GPUVramFreqSupported   bool `json:"gpu_vram_freq_supported"`
 }
 
 // SystemMetrics combines all gathered hardware statistics.

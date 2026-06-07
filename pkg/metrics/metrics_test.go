@@ -17,6 +17,16 @@ func TestMockMetricsReader_CPU(t *testing.T) {
 		t.Errorf("expected CPU UsagePercent in [0, 100], got %f", metrics.UsagePercent)
 	}
 
+	if len(metrics.CoresUsagePercent) != 8 {
+		t.Errorf("expected CPU CoresUsagePercent to have 8 cores, got %d", len(metrics.CoresUsagePercent))
+	} else {
+		for i, coreVal := range metrics.CoresUsagePercent {
+			if coreVal < 0.0 || coreVal > 100.0 {
+				t.Errorf("expected CPU core %d utilization in [0, 100], got %f", i, coreVal)
+			}
+		}
+	}
+
 	if metrics.TempCelsius < 15.0 || metrics.TempCelsius > 110.0 {
 		t.Errorf("expected CPU TempCelsius in realistic bounds, got %f", metrics.TempCelsius)
 	}
@@ -134,7 +144,7 @@ func TestMockMetricsReader_GetFlags(t *testing.T) {
 	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	flags := reader.GetFlags()
 
-	if !flags.CPUUsageSupported || !flags.CPUTempSupported || !flags.CPUFreqSupported || !flags.CPUPowerSupported {
+	if !flags.CPUUsageSupported || !flags.CPUCoresUsageSupported || !flags.CPUTempSupported || !flags.CPUFreqSupported || !flags.CPUPowerSupported {
 		t.Errorf("expected all CPU flags to be true, got %+v", flags)
 	}
 	if !flags.RAMSupported {
