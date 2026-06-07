@@ -26,6 +26,22 @@ jobs:
       - name: Install Dependencies
         run: go mod download
 
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Generate Proto Code
+        run: buf generate
+        working-directory: api
+
+      - name: Verify Protos Up-To-Date
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Generated protobuf files are out of sync! Please run 'buf generate' inside the 'api' directory locally and commit changes."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+
       - name: Run Tests
         run: go test -race -v ./...
 
