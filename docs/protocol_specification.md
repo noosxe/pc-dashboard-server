@@ -105,12 +105,17 @@ Pushed continuously every **1000ms**.
       "properties": {
         "cpu": {
           "type": "object",
-          "required": ["usage_percent", "temp_celsius", "power_watts", "tmax_celsius"],
+          "required": ["usage_percent", "temp_celsius", "power_watts", "tmax_celsius", "cores_usage_percent"],
           "properties": {
             "usage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
             "temp_celsius": { "type": "number" },
             "power_watts": { "type": "number", "minimum": 0 },
-            "tmax_celsius": { "type": "number", "description": "Maximum thermal throttle threshold in Celsius; 0.0 if unsupported" }
+            "tmax_celsius": { "type": "number", "description": "Maximum thermal throttle threshold in Celsius; 0.0 if unsupported" },
+            "cores_usage_percent": {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0, "maximum": 100 },
+              "description": "Utilization percentage for each logical CPU core"
+            }
           }
         },
         "gpu": {
@@ -167,7 +172,7 @@ Pushed continuously every **1000ms**.
         "flags": {
           "type": "object",
           "required": [
-            "cpu_usage_supported", "cpu_temp_supported", "cpu_freq_supported", "cpu_power_supported", "cpu_temp_tmax_supported",
+            "cpu_usage_supported", "cpu_cores_usage_supported", "cpu_temp_supported", "cpu_freq_supported", "cpu_power_supported", "cpu_temp_tmax_supported",
             "ram_supported", "gpu_supported", "gpu_usage_supported", "gpu_temp_supported",
             "gpu_vram_supported", "gpu_freq_supported", "gpu_power_supported",
             "gpu_vram_temp_supported", "gpu_vram_freq_supported", "gpu_temp_tmax_supported",
@@ -175,6 +180,7 @@ Pushed continuously every **1000ms**.
           ],
           "properties": {
             "cpu_usage_supported": { "type": "boolean" },
+            "cpu_cores_usage_supported": { "type": "boolean" },
             "cpu_temp_supported": { "type": "boolean" },
             "cpu_freq_supported": { "type": "boolean" },
             "cpu_power_supported": { "type": "boolean" },

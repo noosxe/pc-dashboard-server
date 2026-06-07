@@ -414,7 +414,14 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. ⚡ Additional Planned Enhancements
+### 9. 📊 Per-Core CPU Utilization Telemetry 🟡 *[Design Phase]*
+Expose individual utilization percentages for each logical CPU core in the telemetry payload, allowing the companion Android app to display multi-core charts or core-by-core status bars.
+- **Outbound Stream**: Include a new array field `cores_usage_percent` in the CPU telemetry block and add a `cpu_cores_usage_supported` capability flag.
+- **Mechanisms**: Dynamically queries per-core CPU times utilizing `github.com/shirou/gopsutil/v4/cpu` by passing `percpu = true`.
+- **Emulation Support**: Simulates 8 logical cores with realistic sine-wave patterns and phase shifts to test UI behaviors.
+- *Status*: Schema defined and metrics parsing design established. Awaiting review.
+
+### 10. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
