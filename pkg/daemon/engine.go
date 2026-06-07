@@ -328,9 +328,10 @@ func (e *Engine) runTelemetryLoop(ctx context.Context) {
 			}
 
 			sysMetrics := metrics.SystemMetrics{
-				CPU: cpuMetrics,
-				RAM: ramMetrics,
-				GPU: gpuMetrics,
+				CPU:   cpuMetrics,
+				RAM:   ramMetrics,
+				GPU:   gpuMetrics,
+				Flags: e.metrics.GetFlags(),
 			}
 
 			payload := TelemetryPayload{

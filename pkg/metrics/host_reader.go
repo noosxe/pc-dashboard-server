@@ -27,6 +27,7 @@ type HostMetricsReader struct {
 	lastEnergy     uint64
 	lastEnergyTime time.Time
 	hasEnergy      bool
+	flags          TelemetryFlags
 }
 
 // NewHostMetricsReader instantiates a production MetricsReader.
@@ -51,7 +52,8 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 
 	// Calculate CPU usage percent
 	times, err := cpu.Times(false)
-	if err == nil && len(times) > 0 {
+	r.flags.CPUUsageSupported = err == nil && len(times) > 0
+	if r.flags.CPUUsageSupported {
 		curr := times[0]
 		if r.hasCPUTimes {
 			m.UsagePercent = calculateCPUUsage(r.lastCPUTimes, curr)
@@ -61,16 +63,21 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 	}
 
 	// Retrieve CPU temperature from sysfs / hwmon
-	m.TempCelsius = readCPUTemperature()
+	var tempSupported bool
+	m.TempCelsius, tempSupported = readCPUTemperature()
+	r.flags.CPUTempSupported = tempSupported
 
 	// Retrieve CPU frequency in MHz
-	m.FreqMHz = readCPUFrequency()
+	var freqSupported bool
+	m.FreqMHz, freqSupported = readCPUFrequency()
+	r.flags.CPUFreqSupported = freqSupported
 
 	// Retrieve CPU power in Watts via RAPL energy_uj
 	var power float64
 	energyFile := "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
 	energyBytes, err := os.ReadFile(energyFile)
 	if err == nil {
+		r.flags.CPUPowerSupported = true
 		energyVal, err := strconv.ParseUint(strings.TrimSpace(string(energyBytes)), 10, 64)
 		if err == nil {
 			now := time.Now()
@@ -87,6 +94,8 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 			r.lastEnergyTime = now
 			r.hasEnergy = true
 		}
+	} else {
+		r.flags.CPUPowerSupported = false
 	}
 	m.PowerWatts = math.Round(power*100) / 100
 
@@ -95,8 +104,12 @@ func (r *HostMetricsReader) ReadCPU() (CPUMetrics, error) {
 
 // ReadRAM retrieves physical RAM information.
 func (r *HostMetricsReader) ReadRAM() (RAMMetrics, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	var m RAMMetrics
 	v, err := mem.VirtualMemory()
+	r.flags.RAMSupported = err == nil
 	if err != nil {
 		return m, err
 	}
@@ -108,23 +121,57 @@ func (r *HostMetricsReader) ReadRAM() (RAMMetrics, error) {
 
 // ReadGPU retrieves graphics processor metrics.
 func (r *HostMetricsReader) ReadGPU() (GPUMetrics, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	// Attempt to query NVIDIA via nvidia-smi first
 	if isNvidiaAvailable() {
 		m, err := readNvidiaGPU()
 		if err == nil {
+			r.flags.GPUSupported = true
+			r.flags.GPUUsageSupported = true
+			r.flags.GPUTempSupported = true
+			r.flags.GPUVramSupported = true
+			r.flags.GPUFreqSupported = true
+			r.flags.GPUPowerSupported = true
+			r.flags.GPUVramTempSupported = false
+			r.flags.GPUVramFreqSupported = true
 			return m, nil
 		}
 		r.logger.Warn("Failed to read NVIDIA GPU via nvidia-smi fallback", "error", err)
 	}
 
 	// Attempt to query AMD/Intel via sysfs
-	m, err := readSysfsGPU()
+	m, err, flags := readSysfsGPU()
 	if err == nil {
+		r.flags.GPUSupported = true
+		r.flags.GPUUsageSupported = flags.GPUUsageSupported
+		r.flags.GPUTempSupported = flags.GPUTempSupported
+		r.flags.GPUVramSupported = flags.GPUVramSupported
+		r.flags.GPUFreqSupported = flags.GPUFreqSupported
+		r.flags.GPUPowerSupported = flags.GPUPowerSupported
+		r.flags.GPUVramTempSupported = flags.GPUVramTempSupported
+		r.flags.GPUVramFreqSupported = flags.GPUVramFreqSupported
 		return m, nil
 	}
 
 	// Return graceful empty metrics if no GPU is detected or readable
+	r.flags.GPUSupported = false
+	r.flags.GPUUsageSupported = false
+	r.flags.GPUTempSupported = false
+	r.flags.GPUVramSupported = false
+	r.flags.GPUFreqSupported = false
+	r.flags.GPUPowerSupported = false
+	r.flags.GPUVramTempSupported = false
+	r.flags.GPUVramFreqSupported = false
 	return GPUMetrics{}, nil
+}
+
+// GetFlags returns the support status of system metrics.
+func (r *HostMetricsReader) GetFlags() TelemetryFlags {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.flags
 }
 
 // calculateCPUUsage computes CPU busy time ratio over delta interval.
@@ -146,7 +193,7 @@ func calculateCPUUsage(last, current cpu.TimesStat) float64 {
 }
 
 // readCPUTemperature tries to discover and read CPU package temperature.
-func readCPUTemperature() float64 {
+func readCPUTemperature() (float64, bool) {
 	// 1. Primary Route: Thermal Zones
 	zones, err := filepath.Glob("/sys/class/thermal/thermal_zone*")
 	if err == nil {
@@ -165,7 +212,7 @@ func readCPUTemperature() float64 {
 					continue
 				}
 				if tempVal, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
-					return tempVal / 1000.0
+					return tempVal / 1000.0, true
 				}
 			}
 		}
@@ -194,7 +241,7 @@ func readCPUTemperature() float64 {
 							continue
 						}
 						if tempVal, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
-							return tempVal / 1000.0
+							return tempVal / 1000.0, true
 						}
 					}
 				}
@@ -202,11 +249,11 @@ func readCPUTemperature() float64 {
 		}
 	}
 
-	return 0.0
+	return 0.0, false
 }
 
 // readCPUFrequency reads active clock speeds across cores in MHz.
-func readCPUFrequency() float64 {
+func readCPUFrequency() (float64, bool) {
 	// 1. Primary Route: scaling_cur_freq across all cores
 	files, err := filepath.Glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq")
 	if err == nil && len(files) > 0 {
@@ -224,7 +271,7 @@ func readCPUFrequency() float64 {
 			}
 		}
 		if count > 0 {
-			return totalFreq / float64(count)
+			return totalFreq / float64(count), true
 		}
 	}
 
@@ -240,11 +287,11 @@ func readCPUFrequency() float64 {
 			}
 		}
 		if count > 0 {
-			return totalFreq / float64(count)
+			return totalFreq / float64(count), true
 		}
 	}
 
-	return 0.0
+	return 0.0, false
 }
 
 // isNvidiaAvailable checks if nvidia-smi executable exists.
@@ -324,11 +371,12 @@ func readNvidiaGPU() (GPUMetrics, error) {
 }
 
 // readSysfsGPU queries open-source AMD / Intel sysfs nodes.
-func readSysfsGPU() (GPUMetrics, error) {
+func readSysfsGPU() (GPUMetrics, error, TelemetryFlags) {
 	var m GPUMetrics
+	var flags TelemetryFlags
 	deviceDir := "/sys/class/drm/card0/device"
 	if _, err := os.Stat(deviceDir); os.IsNotExist(err) {
-		return m, err
+		return m, err, flags
 	}
 
 	// 1. GPU Busy percent
@@ -336,6 +384,7 @@ func readSysfsGPU() (GPUMetrics, error) {
 	if err == nil {
 		if val, err := strconv.ParseFloat(strings.TrimSpace(string(busyBytes)), 64); err == nil {
 			m.UsagePercent = val
+			flags.GPUUsageSupported = true
 		}
 	} else {
 		// Fallback pm_info check
@@ -349,6 +398,7 @@ func readSysfsGPU() (GPUMetrics, error) {
 						cleanStr := strings.TrimSpace(strings.ReplaceAll(parts[1], "%", ""))
 						if val, err := strconv.ParseFloat(cleanStr, 64); err == nil {
 							m.UsagePercent = val
+							flags.GPUUsageSupported = true
 							break
 						}
 					}
@@ -359,19 +409,26 @@ func readSysfsGPU() (GPUMetrics, error) {
 
 	// 2. VRAM used bytes
 	usedBytes, err := os.ReadFile(filepath.Join(deviceDir, "mem_info_vram_used"))
-	if err == nil {
+	usedOk := err == nil
+	if usedOk {
 		if val, err := strconv.ParseUint(strings.TrimSpace(string(usedBytes)), 10, 64); err == nil {
 			m.VramUsedBytes = val
+		} else {
+			usedOk = false
 		}
 	}
 
 	// 3. VRAM total bytes
 	totalBytes, err := os.ReadFile(filepath.Join(deviceDir, "mem_info_vram_total"))
-	if err == nil {
+	totalOk := err == nil
+	if totalOk {
 		if val, err := strconv.ParseUint(strings.TrimSpace(string(totalBytes)), 10, 64); err == nil {
 			m.VramTotalBytes = val
+		} else {
+			totalOk = false
 		}
 	}
+	flags.GPUVramSupported = usedOk && totalOk
 
 	// 4. GPU Temperature
 	hwmonGlob := filepath.Join(deviceDir, "hwmon", "hwmon*", "temp1_input")
@@ -381,6 +438,7 @@ func readSysfsGPU() (GPUMetrics, error) {
 		if err == nil {
 			if val, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
 				m.TempCelsius = val / 1000.0
+				flags.GPUTempSupported = true
 			}
 		}
 	}
@@ -391,6 +449,7 @@ func readSysfsGPU() (GPUMetrics, error) {
 		if powerBytes, err := os.ReadFile(powerMatches[0]); err == nil {
 			if val, err := strconv.ParseFloat(strings.TrimSpace(string(powerBytes)), 64); err == nil {
 				m.PowerWatts = math.Round((val/1000000.0)*100) / 100
+				flags.GPUPowerSupported = true
 			}
 		}
 	} else {
@@ -400,24 +459,31 @@ func readSysfsGPU() (GPUMetrics, error) {
 			if powerBytes, err := os.ReadFile(powerMatchesInput[0]); err == nil {
 				if val, err := strconv.ParseFloat(strings.TrimSpace(string(powerBytes)), 64); err == nil {
 					m.PowerWatts = math.Round((val/1000000.0)*100) / 100
+					flags.GPUPowerSupported = true
 				}
 			}
 		}
 	}
 	// 5. GPU Frequency
-	m.FreqMHz = readSysfsGPUFrequency()
+	var freqSupported bool
+	m.FreqMHz, freqSupported = readSysfsGPUFrequency()
+	flags.GPUFreqSupported = freqSupported
 
 	// 6. VRAM Temperature
-	m.VramTempCelsius = readSysfsVRAMTemperature(deviceDir)
+	var vramTempSupported bool
+	m.VramTempCelsius, vramTempSupported = readSysfsVRAMTemperature(deviceDir)
+	flags.GPUVramTempSupported = vramTempSupported
 
 	// 7. VRAM Frequency
-	m.VramFreqMHz = readSysfsVRAMFrequency(deviceDir)
+	var vramFreqSupported bool
+	m.VramFreqMHz, vramFreqSupported = readSysfsVRAMFrequency(deviceDir)
+	flags.GPUVramFreqSupported = vramFreqSupported
 
-	return m, nil
+	return m, nil, flags
 }
 
 // readSysfsGPUFrequency reads graphics engine active clock frequency in MHz in order of preference.
-func readSysfsGPUFrequency() float64 {
+func readSysfsGPUFrequency() (float64, bool) {
 	// 1. Intel Active Frequency: /sys/class/drm/card*/device/gt_act_freq_mhz or /sys/class/drm/card*/gt_act_freq_mhz
 	intelPaths := []string{
 		"/sys/class/drm/card*/device/gt_act_freq_mhz",
@@ -432,7 +498,7 @@ func readSysfsGPUFrequency() float64 {
 					continue
 				}
 				if val, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64); err == nil {
-					return val
+					return val, true
 				}
 			}
 		}
@@ -456,7 +522,7 @@ func readSysfsGPUFrequency() float64 {
 					for _, f := range fields {
 						f = strings.Trim(f, ": \t")
 						if val, err := strconv.ParseFloat(f, 64); err == nil {
-							return val
+							return val, true
 						}
 					}
 				}
@@ -473,20 +539,20 @@ func readSysfsGPUFrequency() float64 {
 				continue
 			}
 			if val, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64); err == nil {
-				return val / 1000000.0
+				return val / 1000000.0, true
 			}
 		}
 	}
 
-	return 0.0
+	return 0.0, false
 }
 
 // readSysfsVRAMTemperature reads VRAM/memory temperature from sysfs / hwmon.
-func readSysfsVRAMTemperature(deviceDir string) float64 {
+func readSysfsVRAMTemperature(deviceDir string) (float64, bool) {
 	hwmonGlob := filepath.Join(deviceDir, "hwmon", "hwmon*", "temp*_input")
 	matches, err := filepath.Glob(hwmonGlob)
 	if err != nil || len(matches) == 0 {
-		return 0.0
+		return 0.0, false
 	}
 
 	// 1. Check labels for "mem", "vram", "junction"
@@ -500,7 +566,7 @@ func readSysfsVRAMTemperature(deviceDir string) float64 {
 					tempBytes, err := os.ReadFile(match)
 					if err == nil {
 						if val, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
-							return val / 1000.0
+							return val / 1000.0, true
 						}
 					}
 				}
@@ -518,17 +584,17 @@ func readSysfsVRAMTemperature(deviceDir string) float64 {
 			tempBytes, err := os.ReadFile(path)
 			if err == nil {
 				if val, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
-					return val / 1000.0
+					return val / 1000.0, true
 				}
 			}
 		}
 	}
 
-	return 0.0
+	return 0.0, false
 }
 
 // readSysfsVRAMFrequency reads VRAM/memory clock frequency in MHz.
-func readSysfsVRAMFrequency(deviceDir string) float64 {
+func readSysfsVRAMFrequency(deviceDir string) (float64, bool) {
 	// 1. AMD DPM Memory Clock: /sys/class/drm/card*/device/pp_dpm_mclk
 	mclkPath := filepath.Join(deviceDir, "pp_dpm_mclk")
 	if _, err := os.Stat(mclkPath); err == nil {
@@ -544,7 +610,7 @@ func readSysfsVRAMFrequency(deviceDir string) float64 {
 					for _, f := range fields {
 						f = strings.Trim(f, ": \t")
 						if val, err := strconv.ParseFloat(f, 64); err == nil {
-							return val
+							return val, true
 						}
 					}
 				}
@@ -562,10 +628,10 @@ func readSysfsVRAMFrequency(deviceDir string) float64 {
 				continue
 			}
 			if val, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64); err == nil {
-				return val / 1000000.0
+				return val / 1000000.0, true
 			}
 		}
 	}
 
-	return 0.0
+	return 0.0, false
 }

@@ -17,6 +17,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 ## ✨ Features
 
 - **⚡ Lightweight Telemetry Engine**: Asynchronously polls system statistics (CPU, RAM, and GPU) at a steady 1-second interval with less than 15MB of RAM footprint.
+- **📊 Telemetry Support Flags**: Automatically determines which system telemetry items (CPU usage/temp/freq/power, RAM stats, and GPU/VRAM sensors) are supported by the host machine's hardware, drivers, and permissions. Exposes these details via a structured `flags` block in the telemetry payload to enable dynamic UI adjustments on dashboard clients, with full command-line trigger customization.
 - **🚀 CPU/GPU/VRAM Frequency Telemetry**: Dynamically extracts active core speeds, graphics engine clock rates, and VRAM memory clock rates (in MHz) every second. Queries average active CPU frequencies via Linux `/sys` scaling interfaces or `gopsutil` CPU core fallbacks. For graphics processors, utilizes custom active frequency sysfs interfaces or dynamic DPM system clock registers for AMD/Intel, alongside CGO-free NVML bindings or structured `nvidia-smi` parses for NVIDIA. Includes full integration with local Unix Domain Socket (UDS) trigger capabilities (`--cpu-freq`, `--gpu-freq`, and `--gpu-vram-freq`).
 - **🔌 CPU/GPU/VRAM Power & Thermal Telemetry**: Gathers package-level CPU power draw, active GPU power consumption, GPU core/edge temperature, and VRAM memory/junction temperature. Accesses CPU power via the unified Linux RAPL sysfs interface (`/sys/class/powercap/intel-rapl`), which natively maps to both Intel and AMD Zen-based processors on modern kernels. For graphics processors, leverages NVML or `nvidia-smi` parameters for NVIDIA GPUs, and queries `sysfs` hwmon paths for AMD/Intel graphics cards, including reading VRAM junction temperatures via hwmon labels (e.g. `temp*_label` matching `mem`, `vram`, or `junction`). Includes a graceful fallback if permissions are restricted (omitting power/thermal fields instead of crashing) and full integration with local UDS trigger commands (`--cpu-power`, `--gpu-power`, and `--gpu-vram-temp`).
 - **🔌 Native ADB Hotplug Tracking**: Directly communicates with the ADB server (`127.0.0.1:5037`) over TCP sockets to monitor USB connections dynamically.
@@ -352,11 +353,7 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. 📊 Telemetry Support Flags 🟡 *[Design Phase]*
-Introduce a `flags` section in the hardware/system telemetry JSON payload (`SystemMetrics`). This section will contain boolean flags mapping to individual telemetry fields (CPU usage, temperature, frequency, power; RAM stats; GPU usage, temperature, VRAM stats, power, VRAM temperature, VRAM frequency) indicating whether the running system's hardware, drivers, and permissions support fetching that specific metric.
-- *Status*: Architecture and protocol design established. Awaiting design review and approval.
-
-### 4. ⚡ Additional Planned Enhancements
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

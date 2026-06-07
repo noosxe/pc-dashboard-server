@@ -112,3 +112,22 @@ func (r *MockMetricsReader) ReadGPU() (GPUMetrics, error) {
 		VramFreqMHz:     math.Round(vramFreq*100) / 100,
 	}, nil
 }
+
+// GetFlags returns the support status of system metrics (always true for mock/emulation).
+func (r *MockMetricsReader) GetFlags() TelemetryFlags {
+	return TelemetryFlags{
+		CPUUsageSupported:    true,
+		CPUTempSupported:     true,
+		CPUFreqSupported:     true,
+		CPUPowerSupported:    true,
+		RAMSupported:         true,
+		GPUSupported:         true,
+		GPUUsageSupported:    true,
+		GPUTempSupported:     true,
+		GPUVramSupported:     true,
+		GPUFreqSupported:     true,
+		GPUPowerSupported:    true,
+		GPUVramTempSupported: true,
+		GPUVramFreqSupported: true,
+	}
+}
