@@ -26,6 +26,9 @@ This document outlines the selected tools, libraries, and protocols to implement
 | **D-Bus & Media (MPRIS)** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus Session Bus to query and control MPRIS media players. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids binary/CLI dependencies and execution. |
 | **D-Bus & Power Profiles** | `github.com/godbus/dbus/v5` | Low-overhead connection to D-Bus System Bus to query and control system power profiles. | None (Pure Go) | **Safe**: Native Go implementation of D-Bus protocol. Avoids spawning system shell processes. |
 | **D-Bus & Bluetooth (BlueZ)** | `github.com/godbus/dbus/v5` | Passive monitoring of connected Bluetooth devices via the BlueZ system service (`org.bluez`): ObjectManager bootstrap, signal subscriptions, and periodic battery/RSSI property reads. | None (Pure Go) | **Safe**: Strictly read-only D-Bus access. No state-mutating BlueZ methods are ever invoked. MAC addresses are logged only at debug level. |
+| **OSD Events Monitoring** | Native sysfs / `pactl` CLI | Subscribes to `/usr/bin/pactl` events for volume adjustments and polls `/sys/class/leds/` for Lock key state changes. | None (Pure Go) | **Safe**: Standard sysfs file reads. Command execution strictly validated with absolute binary paths. |
+| **UPower Peripherals** | `github.com/godbus/dbus/v5` | Direct system D-Bus connection to UPower (`org.freedesktop.UPower`) to query mouse and keyboard battery levels. | None (Pure Go) | **Safe**: Strictly read-only properties query on UPower. |
+| **Package Updates** | `github.com/godbus/dbus/v5` / Native file parser | Direct system D-Bus connection to `org.freedesktop.PackageKit` to query updates; falls back to `/var/lib/update-notifier/updates-available`. | None (Pure Go) | **Safe**: Read-only queries and signals monitoring. No package mutations are executed. |
 
 ---
 
@@ -83,6 +86,9 @@ graph TD
     DaemonCore -->|uses| LockManager[LockManager Interface]
     DaemonCore -->|uses| PowerProfilesManager[PowerProfilesManager Interface]
     DaemonCore -->|uses| BluetoothManager[BluetoothManager Interface]
+    DaemonCore -->|uses| OSDManager[OSDManager Interface]
+    DaemonCore -->|uses| PeripheralsManager[PeripheralsManager Interface]
+    DaemonCore -->|uses| PackageUpdatesManager[PackageUpdatesManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
@@ -104,6 +110,15 @@ graph TD
 
     BluetoothManager -.->|Implementation| DbusBlueZ[DbusBluetoothManager <br>Pure Go D-Bus system bus / BlueZ]
     BluetoothManager -.->|Implementation| MockBluetooth[MockBluetoothManager <br>Simulated BT connect/disconnect ticks]
+
+    OSDManager -.->|Implementation| RealOSD[DbusOSDManager <br>sysfs polling + pactl stream]
+    OSDManager -.->|Implementation| MockOSD[MockOSDManager <br>Simulated volume/lock toggles]
+
+    PeripheralsManager -.->|Implementation| DbusPeripherals[DbusPeripheralsManager <br>Pure Go D-Bus UPower]
+    PeripheralsManager -.->|Implementation| MockPeripherals[MockPeripheralsManager <br>Simulated mouse/keyboard battery]
+
+    PackageUpdatesManager -.->|Implementation| DbusUpdates[DbusPackageUpdatesManager <br>Pure Go D-Bus PackageKit]
+    PackageUpdatesManager -.->|Implementation| MockUpdates[MockPackageUpdatesManager <br>Simulated package updates counts]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -432,7 +447,99 @@ type BluetoothManager interface {
 	1.  `DbusBluetoothManager`: Production manager connecting to the D-Bus System Bus, bootstrapping from `GetManagedObjects`, registering `InterfacesAdded`, `InterfacesRemoved`, and `PropertiesChanged` signal subscriptions on `org.bluez`, and running a periodic goroutine (configurable interval, default 30s) to poll `Battery1.Percentage` and `Device1.RSSI` for connected devices.
 	2.  `MockBluetoothManager`: Emulation client activated by the `--mock-bluetooth` flag. Simulates a scripted sequence of connect/disconnect events across three mock devices (wireless headphones, keyboard, game controller) with oscillating RSSI and draining battery values.
 
-### 4.8. Application Package & Module Layout
+### 4.8. On-Screen Display Events Interface (`OSDManager`)
+The OSD monitoring and broadcasting service communicates exclusively through this interface:
+
+```go
+package osd
+
+import "context"
+
+// OSDEvent represents a system volume change or keyboard indicator lock state transition.
+type OSDEvent struct {
+	// EventType: "volume" | "mute" | "capslock" | "numlock" | "scrolllock"
+	EventType     string `json:"event_type"`
+	VolumePercent int    `json:"volume_percent,omitempty"` // for volume/mute events
+	Muted         bool   `json:"muted,omitempty"`          // for volume/mute events
+	Locked        bool   `json:"locked,omitempty"`         // for capslock/numlock/scrolllock events
+}
+
+// OSDManager defines the contract for monitoring master audio volume and keyboard lock indicators.
+type OSDManager interface {
+	// Start begins monitoring OSD sources and pushes events down the channel.
+	Start(ctx context.Context) (<-chan OSDEvent, error)
+}
+```
+
+*   **Implementations**:
+	1.  `DbusOSDManager`: Production manager that spawns background processes to parse `/usr/bin/pactl subscribe` for volume/mute changes and reads `/sys/class/leds/` brightness values for Lock keys status toggles.
+	2.  `MockOSDManager`: Emulation client that triggers randomized lock status events and volume adjustments on a periodic background ticker.
+
+### 4.9. Peripherals Telemetry Interface (`PeripheralsManager`)
+The keyboard/mouse peripheral tracking service communicates exclusively through this interface:
+
+```go
+package peripherals
+
+import "context"
+
+// PeripheralDevice represents a single connected mouse or keyboard peripheral.
+type PeripheralDevice struct {
+	Name           string  `json:"name"`
+	Type           string  `json:"type"` // "keyboard" | "mouse"
+	BatteryPercent float64 `json:"battery_percent"`
+	ChargingState  string  `json:"charging_state"` // "charging" | "discharging" | "full" | "unknown"
+	PollRateHz     int     `json:"poll_rate_hz"`
+}
+
+// PeripheralsState represents the current snapshot of connected peripheral devices.
+type PeripheralsState struct {
+	Devices []PeripheralDevice `json:"devices"`
+}
+
+// PeripheralsManager defines the contract for gathering peripheral batteries and polling rates.
+type PeripheralsManager interface {
+	// Start begins monitoring connected peripherals and pushing state snapshots.
+	Start(ctx context.Context) (<-chan PeripheralsState, error)
+
+	// GetState returns the current snapshot of connected peripheral states.
+	GetState() PeripheralsState
+}
+```
+
+*   **Implementations**:
+	1.  `DbusPeripheralsManager`: Production manager connecting to the D-Bus System Bus, querying UPower for connected mice and keyboards, and parsing sysfs descriptor `bInterval` values for nominal polling frequencies.
+	2.  `MockPeripheralsManager`: Emulation client that returns simulated peripherals and drains their battery levels periodically in memory.
+
+### 4.10. Package Manager Updates Interface (`PackageUpdatesManager`)
+The package manager updates indication service communicates exclusively through this interface:
+
+```go
+package updates
+
+import "context"
+
+// PackageUpdatesState represents the current number of available system package updates.
+type PackageUpdatesState struct {
+	UpdatesAvailable         int `json:"updates_available"`
+	SecurityUpdatesAvailable int `json:"security_updates_available"`
+}
+
+// PackageUpdatesManager defines the contract for monitoring available system updates.
+type PackageUpdatesManager interface {
+	// Start begins monitoring system packages and pushing update count snapshots.
+	Start(ctx context.Context) (<-chan PackageUpdatesState, error)
+
+	// GetState returns the last cached state of available updates.
+	GetState() PackageUpdatesState
+}
+```
+
+*   **Implementations**:
+	1.  `DbusPackageUpdatesManager`: Production manager connecting to the D-Bus System Bus, listening for PackageKit's `UpdatesChanged` signals, and starting temporary transactions to query `GetUpdates()` asynchronously; includes local notifier file reading fallback.
+	2.  `MockPackageUpdatesManager`: Emulation client that increments available update counts on a slow timer in memory.
+
+### 4.11. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -474,6 +581,18 @@ pc-dashboard-server/
 │   │   ├── bluetooth.go          # BluetoothManager interface & event/device models
 │   │   ├── dbus_manager.go       # Production BluetoothManager (BlueZ System D-Bus)
 │   │   └── mock_manager.go       # Simulated BT connect/disconnect/RSSI/battery events
+│   ├── osd/                      # OSD Events monitoring module
+│   │   ├── osd.go                # OSDManager interface & OSD event models
+│   │   ├── dbus_manager.go       # Production OSDManager (pactl execution + sysfs polling)
+│   │   └── mock_manager.go       # Simulated volume/mute and lock key toggles
+│   ├── peripherals/              # Keyboard/Mouse peripheral monitoring module
+│   │   ├── peripherals.go        # PeripheralsManager interface & models
+│   │   ├── dbus_manager.go       # Production PeripheralsManager (D-Bus UPower + sysfs bInterval)
+│   │   └── mock_manager.go       # Simulated keyboard/mouse battery drainer
+│   ├── updates/                  # Package updates monitoring module
+│   │   ├── updates.go            # PackageUpdatesManager interface & models
+│   │   ├── dbus_manager.go       # Production PackageUpdatesManager (D-Bus PackageKit + file fallback)
+│   │   └── mock_manager.go       # Simulated updates counts increments
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -485,19 +604,21 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`, `--mock-bluetooth`) or YAML values to instantiate the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, and `BluetoothManager`.
-2. **Injection Phase**: The instantiated interfaces are injected directly into the `pkg/daemon` Orchestrator module.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It parses the configuration and checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`, `--mock-bluetooth`) or YAML values. It then instantiates the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, `BluetoothManager`, `OSDManager`, `PeripheralsManager`, and `PackageUpdatesManager`.
+   *   *Module Toggles*: If any module is toggled to `false` in the `modules` configuration block, `start.go` skips its instantiation, and the system records the module as disabled (logging the state at `info` level).
+2. **Injection Phase**: All active manager instances are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
-4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`). It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. Concurrently, it listens on the `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, and `BluetoothManager` event channels, pushing `media_state`, `notification_event`, `session_lock`, `power_profile_state`, and `bluetooth_state` updates to the WebSocket broadcaster as they arrive.
-   - **Session Lock State Caching**: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
-   - **Power Profile Caching**: Similarly, the engine caches the last received `power_profile_state` to immediately push the current system profile and list of available profiles to clients as soon as they connect.
-   - **Bluetooth State Caching**: The engine caches the last `bluetooth_state` payload (full `connected_devices` list). When a new client connects, the cached Bluetooth state is immediately pushed alongside the session lock and power profile caches.
-5. **Command Ingestion Phase**: WebSocket clients send `notification_command`, `media_command`, or `power_profile_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager`, `MPRISManager`, or `PowerProfilesManager` to execute actions or trigger properties writes on the host system.
+4. **Broadcasting Phase**: The `pkg/daemon` engine instantiates the loopback WebSocket server (`pkg/websocket`).
+   *   *Passive Polling*: It spins up a ticker thread that polls metrics via the injected `MetricsReader` every second. If `peripherals` and `package_updates` modules are active, it queries their current state via `PeripheralsManager.GetState()` and `PackageUpdatesManager.GetState()` and packs their respective device and package counts arrays into the outbound `telemetry` JSON payload.
+   *   *Event-Driven Push*: Concurrently, it listens on the `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, `BluetoothManager`, and `OSDManager` event channels, pushing `media_state`, `notification_event`, `session_lock`, `power_profile_state`, `bluetooth_state`, and `osd_event` updates to the WebSocket broadcaster connection pool as they arrive.
+   *   *Session Lock State Caching*: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
+   *   *Power Profile Caching*: Similarly, the engine caches the last received `power_profile_state` to immediately push the current system profile and list of available profiles to clients as soon as they connect.
+   *   *Bluetooth State Caching*: The engine caches the last `bluetooth_state` payload (full `connected_devices` list). When a new client connects, the cached Bluetooth state is immediately pushed alongside the session lock and power profile caches.
+5. **Command Ingestion Phase**: WebSocket clients send `notification_command`, `media_command`, or `power_profile_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager`, `MPRISManager`, or `PowerProfilesManager` to execute actions or trigger properties writes on the host system. If a requested control command targets a disabled module, the daemon drops the frame and writes an error log at `warn` level.
 6. **Local Command Socket Triggering**: 
-   - When the daemon starts, the `pkg/daemon` engine starts the `command_listener` goroutine which binds to a local Unix Domain Socket (default `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
-   - The CLI `cmd/trigger.go` command runs as a separate process invocation. It validates the user's requested trigger (lock, unlock, notification, power profile, etc.), constructs a structured `UDSRequest`, dials the Unix socket, and transmits the payload.
-   - The `command_listener` reads this request, validates the type/schema, retrieves the current connection pool status to report active WebSocket client count, broadcasts the payload to all active WebSocket clients, and writes back a `UDSResponse` containing success state and routed client count.
-
+   *   When the daemon starts, the `pkg/daemon` engine starts the `command_listener` goroutine which binds to a local Unix Domain Socket (default `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
+   *   The CLI `cmd/trigger.go` command runs as a separate process invocation. It validates the user's requested trigger (lock, unlock, notification, power profile, OSD, etc.), constructs a structured `UDSRequest`, dials the Unix socket, and transmits the payload.
+   *   The `command_listener` reads this request, validates the type/schema, retrieves the current connection pool status to report active WebSocket client count, broadcasts the payload to all active WebSocket clients, and writes back a `UDSResponse` containing success state and routed client count.
 
 ---
 

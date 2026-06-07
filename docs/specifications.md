@@ -63,6 +63,7 @@ The Telemetry engine gathers host statistics every 1.0 second (hardcoded interva
 *   **Temperature**: Read from Linux `/sys/` interface.
     *   *Primary Route*: Thermal Zones: `/sys/class/thermal/thermal_zone*/temp` (selecting zones where `type` contains `x86_pkg_temp`, `cpu-thermal`, or `coretemp`).
     *   *Secondary Route*: Hwmon sensors: `/sys/class/hwmon/hwmon*/temp*_input` matching label files containing `Package` or `Core`.
+*   **Tmax (Maximum Limit)**: The critical temperature threshold (throttle/shutdown temperature) in Celsius. Read from `/sys/class/hwmon/hwmon*/temp*_crit` matching the active package temperature index (reported in millidegrees Celsius, divided by 1000).
 *   **Frequency**: Read in MHz representing active clock speeds across cores.
     *   *Primary Route*: Average scaling frequencies from `/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq` (reported in kHz, divided by 1000).
     *   *Secondary Route*: Fallback to `cpu.Info()` from `github.com/shirou/gopsutil/v4/cpu`, averaging the `Mhz` field from all returned `InfoStat` structs.
@@ -96,6 +97,7 @@ The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics
     *   *VRAM Frequency*: Query the active VRAM/memory clock frequency in MHz in order of preference:
         1.  AMD DPM Memory Clock: `/sys/class/drm/card*/device/pp_dpm_mclk` (parsing the active frequency marked with `*`).
         2.  Hwmon Frequency Input: `/sys/class/drm/card*/device/hwmon/hwmon*/freq2_input` (Hz to MHz conversion).
+*   **Tmax (Maximum Limit)**: The critical GPU temperature threshold in Celsius. For NVIDIA GPUs, queried via NVML call `nvmlDeviceGetTemperatureThreshold` (slowdown or shutdown threshold). For AMD/Intel GPUs, queried from the critical temperature sysfs nodes: `/sys/class/drm/card0/device/hwmon/hwmon*/temp1_crit` or `temp1_max` (divided by 1000).
 
 #### D. Swap Statistics
 *   **Total / Used**: Read in bytes.
@@ -110,6 +112,33 @@ The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics
 *   **Compression Ratio**: Calculated ratio of `Original Data Bytes` divided by `Compressed Data Bytes` (when compressed size > 0), rounded to 2 decimal places.
 *   **Retrieval**: Discovered by globbing active ZRAM device directories `/sys/block/zram*`. Total bytes are read from `/sys/block/zram<id>/disksize`, and memory stats are parsed from `/sys/block/zram<id>/mm_stat` (containing space-separated values for uncompressed, compressed, and allocator memory totals). Values are accumulated across all active ZRAM devices.
 
+#### G. Peripherals Telemetry
+*   **Device Discovery & Identification**: Queries the system D-Bus service `org.freedesktop.UPower` by calling `EnumerateDevices()` on path `/org/freedesktop/UPower` on startup and upon device change signals.
+*   **Filtering**: Filters listed power devices by `Type` property:
+    *   `Type == 5`: Mouse
+    *   `Type == 6`: Keyboard
+*   **Battery Charge & Status**: Reads the following properties via D-Bus properties calls:
+    *   `Model` (string) and `Vendor` (string): Human-readable device names.
+    *   `Percentage` (double, 0-100): Battery charge level.
+    *   `State` (uint): Current charging state (e.g. charging, discharging, full).
+*   **USB Nominal Polling Rate**:
+    *   Locates the sysfs device path corresponding to the keyboard or mouse input device (resolved via udev or input class path).
+    *   Queries the USB endpoint descriptor file `bInterval` (e.g. `/sys/bus/usb/devices/*/bInterval`).
+    *   Translates the `bInterval` value to a nominal polling rate in Hertz (Hz):
+        *   For USB 1.1 / Low Speed: $f = 1000 / \text{bInterval}$ Hz.
+        *   For USB 2.0+ / High Speed: $f = 8000 / 2^{\text{bInterval}-1}$ Hz.
+
+#### H. Package Manager Updates indications
+*   **PackageKit D-Bus Protocol**:
+    *   Monitors the `UpdatesChanged` signal on system D-Bus interface `org.freedesktop.PackageKit` at `/org/freedesktop/PackageKit` to receive updates notifications from the background daemon.
+    *   Triggers update counts checks on startup and upon receiving signals by initiating an asynchronous transaction:
+        1.  Invokes `CreateTransaction()` on the root interface to obtain a new transaction path.
+        2.  Invokes `GetUpdates(1)` (filter `none`) on the transaction path.
+        3.  Listens to the `Package(uint32 info, string package_id, string summary)` signals emitted by the transaction. Accumulates the total packages counted. If the `info` flag is `2`, increments the security updates count.
+        4.  Closes transaction upon receiving the `Finished` signal.
+*   **Local File Fallback (Debian/Ubuntu)**:
+    *   Checks `/var/lib/update-notifier/updates-available` at a slower periodic polling rate (e.g. 5 minutes) as a lightweight, unprivileged fallback for apt-based systems.
+
 #### F. Telemetry Support Flags
 To allow companion applications to dynamically adapt their interface components (e.g., hiding temperature or power dials if the underlying system lacks the corresponding sensors or permissions), the telemetry payload includes a structured `flags` block. 
 
@@ -118,11 +147,16 @@ These boolean fields indicate capability status:
 *   `cpu_temp_supported`: Evaluated by detection of package/thermal zones temp sysfs interface.
 *   `cpu_freq_supported`: Evaluated by readability of CPU frequency scaling parameters.
 *   `cpu_power_supported`: Evaluated by unprivileged read access to RAPL power counters (`energy_uj`).
+*   `cpu_temp_tmax_supported`: Evaluated by readability of the critical CPU temperature sysfs interface.
 *   `ram_supported`: Evaluated by successful gopsutil virtual memory stats query.
 *   `swap_supported`: Evaluated by successful gopsutil swap memory stats query.
 *   `zram_supported`: Evaluated by successful discovery of active ZRAM block devices and readability of their sysfs attributes.
 *   `gpu_supported`: Evaluated by the detection of a supported graphics driver interface (NVML or Sysfs DRM).
 *   `gpu_usage_supported` / `gpu_temp_supported` / `gpu_vram_supported` / `gpu_freq_supported` / `gpu_power_supported` / `gpu_vram_temp_supported` / `gpu_vram_freq_supported`: Evaluated based on the respective reader's ability to locate and query those sensors from the GPU.
+*   `gpu_temp_tmax_supported`: Evaluated by capability to retrieve NVML/sysfs critical GPU temperature threshold.
+*   `osd_supported`: Evaluated by successful start of key LED polling and PulseAudio connection check.
+*   `peripherals_supported`: Evaluated by presence and availability of the UPower system D-Bus interface.
+*   `package_updates_supported`: Evaluated by accessibility of the PackageKit system D-Bus service or local update notifier file.
 
 ---
 
@@ -509,6 +543,24 @@ The client and server communicate using structured JSON over the Unix Domain Soc
 
 ---
 
+### 3.13. On-Screen Display (OSD) Events Engine
+The PC Dashboard Server features a dedicated, asynchronous OSD Events Engine that tracks system audio adjustments and keyboard indicator locks (Caps/Num/Scroll Lock) and broadcasts real-time transition signals over the WebSocket stream.
+
+#### A. Keyboard Indicator Lock Monitoring (sysfs)
+1. **Low-Overhead Sysfs Polling**: The daemon initiates a 200ms background polling ticker. It queries directory paths matching `/sys/class/leds/*::capslock/brightness`, `/sys/class/leds/*::numlock/brightness`, and `/sys/class/leds/*::scrolllock/brightness`.
+2. **State Deduplication**: The engine compares the integer brightness value (e.g. `0` for inactive, `1` or non-zero for active) with the last cached state.
+3. **Instant Signal Broadcast**: If any transition occurs, the engine constructs a WebSocket `osd_event` payload containing the specific lock type and its current state (`locked`: boolean), allowing the dashboard client to display on-screen status updates (e.g. a Caps Lock overlay) instantaneously.
+
+#### B. System Master Volume & Mute Monitoring (PulseAudio/PipeWire)
+1. **Event Subscription**: The daemon spawns a PulseAudio client connection or starts a command-line wrapper subscribing to system sink events: `/usr/bin/pactl subscribe`.
+2. **Asynchronous Filtering**: The background reader monitors stdout. On catching lines indicating a `change` event on a `sink`, it immediately executes:
+   * `/usr/bin/pactl get-sink-volume @DEFAULT_SINK@`
+   * `/usr/bin/pactl get-sink-mute @DEFAULT_SINK@`
+3. **Volume Extraction**: The query outputs are parsed to extract the current volume (as a percentage, e.g. `65%`) and mute status (`yes`/`no`).
+4. **Transition Broadcasting**: The engine filters out duplicate values and pushes an `osd_event` WebSocket frame when the volume level or mute state changes, enabling the client device to render volume-slider overlays.
+
+---
+
 ## 4. Security Model & Guidelines
 
 To ensure maximum safety and protect the user's host machine, the daemon adheres to the following secure coding principles:
@@ -527,4 +579,7 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 12. **Bluetooth Passive Monitoring & Privacy**: The Bluetooth monitoring module operates in a strictly read-only, passive mode. It must never invoke state-mutating BlueZ methods (`StartDiscovery`, `Connect`, `Disconnect`, `RemoveDevice`, `Pair`, etc.) under any circumstances. Outbound `bluetooth_state` payloads are limited to display-relevant fields (`address`, `name`, `alias`, `class`, `battery_percent`, `rssi`, `connected`, `paired`, `trusted`); raw GATT UUIDs, manufacturer data, and service records are excluded to minimize hardware fingerprinting exposure. Bluetooth MAC addresses are logged only at `debug` level to prevent hardware identifier leakage in production journal output.
 13. **Unprivileged CPU Power Telemetry Safeties**: When reading CPU power consumption via RAPL sysfs attributes (`energy_uj`), the daemon must operate in a strictly read-only mode. Elevated privilege configurations (such as configuring world-readable files via `sysfsutils` or group ownership/permissions via `udev` rules) are external system configurations; the daemon itself must never attempt to execute `chmod`, `chown`, or modify file system permissions dynamically. If read permissions are absent, the daemon must gracefully fall back by omitting CPU power fields from telemetry frames rather than failing.
 14. **Swap and ZRAM Telemetry Safeties**: The daemon queries swap metrics via standard `gopsutil` APIs and ZRAM statistics via sysfs `/sys/block/zram*` nodes. The operations must be strictly read-only and run in user space, requiring zero elevated root privileges or modifications to the host storage/memory configurations.
+15. **OSD Event Execution Safeties**: PulseAudio wrapper commands (such as `pactl`) must be called using strictly hardcoded absolute binary paths (e.g., `/usr/bin/pactl`) and fixed arguments. The parsing loop must strictly validate types (parsing integer percentages and booleans), avoiding arbitrary string parsing or log injections.
+16. **Peripherals Read-Only Limits**: Accessing UPower properties over D-Bus system bus must use strictly read-only calls. Sysfs reads for nominal polling rates (`bInterval`) must validate the path target resides under `/sys/` boundaries, using strict file limit constraints to prevent system leaks.
+17. **Package Updates Read-Only Boundaries**: The package updates tracking engine operates strictly in a query-only mode. It must never request or trigger package installations, removals, or system upgrades. PackageKit transaction queries must be validated for boundaries, ensuring zero elevated privilege escalation risks.
 
