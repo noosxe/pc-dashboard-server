@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -173,34 +174,36 @@ var MediaCmd = &cobra.Command{
 
 // Telemetry variables
 var (
-	telCPUUsage             float64
-	telCPUTemp              float64
-	telCPUFreq              float64
-	telCPUPower             float64
-	telRAMUsed              uint64
-	telRAMTotal             uint64
-	telRAMPerc              float64
-	telGPUUsage             float64
-	telGPUTemp              float64
-	telGPUFreq              float64
-	telGPUMemUsed           uint64
-	telGPUMemTotal          uint64
-	telGPUPower             float64
-	telGPUVramTemp          float64
-	telGPUVramFreq          float64
-	telCPUUsageSupported    bool
-	telCPUTempSupported     bool
-	telCPUFreqSupported     bool
-	telCPUPowerSupported    bool
-	telRAMSupported         bool
-	telGPUSupported         bool
-	telGPUUsageSupported    bool
-	telGPUTempSupported     bool
-	telGPUVramSupported     bool
-	telGPUFreqSupported     bool
-	telGPUPowerSupported    bool
-	telGPUVramTempSupported bool
-	telGPUVramFreqSupported bool
+	telCPUUsage               float64
+	telCPUCoresUsage          string
+	telCPUTemp                float64
+	telCPUFreq                float64
+	telCPUPower               float64
+	telRAMUsed                uint64
+	telRAMTotal               uint64
+	telRAMPerc                float64
+	telGPUUsage               float64
+	telGPUTemp                float64
+	telGPUFreq                float64
+	telGPUMemUsed             uint64
+	telGPUMemTotal            uint64
+	telGPUPower               float64
+	telGPUVramTemp            float64
+	telGPUVramFreq            float64
+	telCPUUsageSupported      bool
+	telCPUCoresUsageSupported bool
+	telCPUTempSupported       bool
+	telCPUFreqSupported       bool
+	telCPUPowerSupported      bool
+	telRAMSupported           bool
+	telGPUSupported           bool
+	telGPUUsageSupported      bool
+	telGPUTempSupported       bool
+	telGPUVramSupported       bool
+	telGPUFreqSupported       bool
+	telGPUPowerSupported      bool
+	telGPUVramTempSupported   bool
+	telGPUVramFreqSupported   bool
 )
 
 // TelemetryCmd triggers system telemetry metrics updates
@@ -212,12 +215,27 @@ var TelemetryCmd = &cobra.Command{
 			telRAMPerc = (float64(telRAMUsed) / float64(telRAMTotal)) * 100
 		}
 
+		var coresUsage []float64
+		if telCPUCoresUsage != "" {
+			parts := strings.Split(telCPUCoresUsage, ",")
+			for _, part := range parts {
+				trimmed := strings.TrimSpace(part)
+				if trimmed != "" {
+					val, err := strconv.ParseFloat(trimmed, 64)
+					if err == nil {
+						coresUsage = append(coresUsage, val)
+					}
+				}
+			}
+		}
+
 		sysMetrics := metrics.SystemMetrics{
 			CPU: metrics.CPUMetrics{
-				UsagePercent: telCPUUsage,
-				TempCelsius:  telCPUTemp,
-				FreqMHz:      telCPUFreq,
-				PowerWatts:   telCPUPower,
+				UsagePercent:      telCPUUsage,
+				CoresUsagePercent: coresUsage,
+				TempCelsius:       telCPUTemp,
+				FreqMHz:           telCPUFreq,
+				PowerWatts:        telCPUPower,
 			},
 			RAM: metrics.RAMMetrics{
 				UsedBytes:  telRAMUsed,
@@ -235,19 +253,20 @@ var TelemetryCmd = &cobra.Command{
 				VramFreqMHz:     telGPUVramFreq,
 			},
 			Flags: metrics.TelemetryFlags{
-				CPUUsageSupported:    telCPUUsageSupported,
-				CPUTempSupported:     telCPUTempSupported,
-				CPUFreqSupported:     telCPUFreqSupported,
-				CPUPowerSupported:    telCPUPowerSupported,
-				RAMSupported:         telRAMSupported,
-				GPUSupported:         telGPUSupported,
-				GPUUsageSupported:    telGPUUsageSupported,
-				GPUTempSupported:     telGPUTempSupported,
-				GPUVramSupported:     telGPUVramSupported,
-				GPUFreqSupported:     telGPUFreqSupported,
-				GPUPowerSupported:    telGPUPowerSupported,
-				GPUVramTempSupported: telGPUVramTempSupported,
-				GPUVramFreqSupported: telGPUVramFreqSupported,
+				CPUUsageSupported:      telCPUUsageSupported,
+				CPUCoresUsageSupported: telCPUCoresUsageSupported,
+				CPUTempSupported:       telCPUTempSupported,
+				CPUFreqSupported:       telCPUFreqSupported,
+				CPUPowerSupported:      telCPUPowerSupported,
+				RAMSupported:           telRAMSupported,
+				GPUSupported:           telGPUSupported,
+				GPUUsageSupported:      telGPUUsageSupported,
+				GPUTempSupported:       telGPUTempSupported,
+				GPUVramSupported:       telGPUVramSupported,
+				GPUFreqSupported:       telGPUFreqSupported,
+				GPUPowerSupported:      telGPUPowerSupported,
+				GPUVramTempSupported:   telGPUVramTempSupported,
+				GPUVramFreqSupported:   telGPUVramFreqSupported,
 			},
 		}
 
@@ -356,6 +375,7 @@ func init() {
 
 	// Telemetry subcommand flags
 	TelemetryCmd.Flags().Float64Var(&telCPUUsage, "cpu-usage", 25.5, "Overall CPU busy percentage")
+	TelemetryCmd.Flags().StringVar(&telCPUCoresUsage, "cpu-cores-usage", "10.0,20.0,30.0,40.0", "Logical CPU cores utilization (comma-separated)")
 	TelemetryCmd.Flags().Float64Var(&telCPUTemp, "cpu-temp", 45.0, "Overall CPU core packages temperature")
 	TelemetryCmd.Flags().Float64Var(&telCPUFreq, "cpu-freq", 2500.0, "CPU core active scaling frequency in MHz")
 	TelemetryCmd.Flags().Float64Var(&telCPUPower, "cpu-power", 35.0, "CPU package power consumption in Watts")
@@ -372,6 +392,7 @@ func init() {
 	TelemetryCmd.Flags().Float64Var(&telGPUVramFreq, "gpu-vram-freq", 1500.0, "GPU VRAM active frequency in MHz")
 
 	TelemetryCmd.Flags().BoolVar(&telCPUUsageSupported, "cpu-usage-supported", true, "CPU usage supported flag")
+	TelemetryCmd.Flags().BoolVar(&telCPUCoresUsageSupported, "cpu-cores-usage-supported", true, "CPU cores usage supported flag")
 	TelemetryCmd.Flags().BoolVar(&telCPUTempSupported, "cpu-temp-supported", true, "CPU temperature supported flag")
 	TelemetryCmd.Flags().BoolVar(&telCPUFreqSupported, "cpu-freq-supported", true, "CPU frequency supported flag")
 	TelemetryCmd.Flags().BoolVar(&telCPUPowerSupported, "cpu-power-supported", true, "CPU power supported flag")

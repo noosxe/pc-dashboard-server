@@ -35,6 +35,19 @@ func (r *MockMetricsReader) ReadCPU() (CPUMetrics, error) {
 		usage = 100
 	}
 
+	coresCount := 8
+	coresUsage := make([]float64, coresCount)
+	for i := 0; i < coresCount; i++ {
+		coreJitter := (r.randSrc.Float64() * 6.0) - 3.0 // random(-3.0, 3.0)
+		coreUsage := 15.0 + math.Sin((t+float64(i)*2.0)/8.0)*10.0 + coreJitter
+		if coreUsage < 0 {
+			coreUsage = 0
+		} else if coreUsage > 100 {
+			coreUsage = 100
+		}
+		coresUsage[i] = math.Round(coreUsage*100) / 100
+	}
+
 	temp := 40.0 + math.Sin(t/8.0)*5.0 + (usage * 0.3)
 
 	jitterFreq := (r.randSrc.Float64() * 10.0) - 5.0 // random(-5.0, 5.0)
@@ -47,10 +60,11 @@ func (r *MockMetricsReader) ReadCPU() (CPUMetrics, error) {
 	}
 
 	return CPUMetrics{
-		UsagePercent: math.Round(usage*100) / 100,
-		TempCelsius:  math.Round(temp*100) / 100,
-		FreqMHz:      math.Round(freq*100) / 100,
-		PowerWatts:   math.Round(power*100) / 100,
+		UsagePercent:      math.Round(usage*100) / 100,
+		CoresUsagePercent: coresUsage,
+		TempCelsius:       math.Round(temp*100) / 100,
+		FreqMHz:           math.Round(freq*100) / 100,
+		PowerWatts:        math.Round(power*100) / 100,
 	}, nil
 }
 
@@ -87,16 +101,16 @@ func (r *MockMetricsReader) ReadGPU() (GPUMetrics, error) {
 	totalVram := uint64(8589934592) // 8GB
 	usedVram := float64(3221225472) + (usage * 20000000.0)
 
-	jitterFreq := (r.randSrc.Float64() * 4.0) - 2.0 // random(-2.0, 2.0)
+	jitterFreq := (r.randSrc.Float64() * 4.0) - 2.0 // random(-4.0, 4.0)
 	freq := 300.0 + (usage * 15.0) + jitterFreq
 
-	jitterPower := (r.randSrc.Float64() * 4.0) - 2.0 // random(-2.0, 2.0)
+	jitterPower := (r.randSrc.Float64() * 4.0) - 2.0 // random(-4.0, 4.0)
 	power := 30.0 + (usage * 1.5) + jitterPower
 	if power < 10.0 {
 		power = 10.0
 	}
 
-	jitterVramFreq := (r.randSrc.Float64() * 6.0) - 3.0 // random(-3.0, 3.0)
+	jitterVramFreq := (r.randSrc.Float64() * 6.0) - 3.0 // random(-6.0, 6.0)
 	vramFreq := 800.0 + (usage * 12.0) + jitterVramFreq
 
 	vramTemp := 50.0 + math.Cos(t/15.0)*10.0 + (usage * 0.25)
@@ -158,20 +172,21 @@ func (r *MockMetricsReader) ReadZRAM() (ZRAMMetrics, error) {
 // GetFlags returns the support status of system metrics (always true for mock/emulation).
 func (r *MockMetricsReader) GetFlags() TelemetryFlags {
 	return TelemetryFlags{
-		CPUUsageSupported:    true,
-		CPUTempSupported:     true,
-		CPUFreqSupported:     true,
-		CPUPowerSupported:    true,
-		RAMSupported:         true,
-		SwapSupported:        true,
-		ZRAMSupported:        true,
-		GPUSupported:         true,
-		GPUUsageSupported:    true,
-		GPUTempSupported:     true,
-		GPUVramSupported:     true,
-		GPUFreqSupported:     true,
-		GPUPowerSupported:    true,
-		GPUVramTempSupported: true,
-		GPUVramFreqSupported: true,
+		CPUUsageSupported:      true,
+		CPUCoresUsageSupported: true,
+		CPUTempSupported:       true,
+		CPUFreqSupported:       true,
+		CPUPowerSupported:      true,
+		RAMSupported:           true,
+		SwapSupported:          true,
+		ZRAMSupported:          true,
+		GPUSupported:           true,
+		GPUUsageSupported:      true,
+		GPUTempSupported:       true,
+		GPUVramSupported:       true,
+		GPUFreqSupported:       true,
+		GPUPowerSupported:      true,
+		GPUVramTempSupported:   true,
+		GPUVramFreqSupported:   true,
 	}
 }
