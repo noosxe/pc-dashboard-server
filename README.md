@@ -274,7 +274,9 @@ The daemon pushes structured telemetry payloads every second to all connected We
       "vram_used_bytes": 3121561600,
       "vram_total_bytes": 8589934592,
       "freq_mhz": 1200.0,
-      "power_watts": 125.5
+      "power_watts": 125.5,
+      "vram_temp_celsius": 62.5,
+      "vram_freq_mhz": 1600.0
     },
     "ram": {
       "used_bytes": 14212567040,
@@ -350,7 +352,14 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. ⚡ Additional Planned Enhancements
+### 3. 📟 GPU VRAM Temperature & Frequency Telemetry 🟡 *[Design Phase]*
+Query and stream dynamic memory (VRAM) temperatures and clock frequencies.
+- **AMD & Intel GPUs**: Read VRAM/memory frequencies from `pp_dpm_mclk` or hwmon `freq2_input` sysfs interfaces, and probe memory/junction temperatures via hwmon sensor inputs and corresponding `temp*_label` metadata.
+- **NVIDIA GPUs**: Extract memory clock frequencies via `nvidia-smi` query parameters (`clocks.current.memory`) or NVML (`NVML_CLOCK_MEM`), and query memory temperatures from NVML API (`NVML_TEMPERATURE_MEM`) where driver/device support is present.
+- **Emulation Support**: Extend the metrics emulator and UDS trigger command protocols to supply simulated VRAM clock speeds and temperatures.
+- *Status*: Solution architecture and protocol specifications established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

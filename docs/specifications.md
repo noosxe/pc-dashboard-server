@@ -76,21 +76,26 @@ The Telemetry engine gathers host statistics every 1.0 second (hardcoded interva
 #### C. Graphics Processor (GPU, VRAM, Frequency & Power) Statistics
 The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics drivers.
 *   **NVIDIA GPUs**:
-    *   *Primary Method*: Communicate with the local **NVML (NVIDIA Management Library)** using standard Go API bindings (or lightweight CGO-free bindings) to extract core GPU utilization percentage, VRAM utilization, temperature, and power usage (`nvmlDeviceGetPowerUsage`).
-    *   *Fallback Method*: Execute `nvidia-smi` as an external command, querying graphic clock frequency and power draw along with existing metrics:
+    *   *Primary Method*: Communicate with the local **NVML (NVIDIA Management Library)** using standard Go API bindings (or lightweight CGO-free bindings) to extract core GPU utilization percentage, VRAM utilization, temperature, power usage (`nvmlDeviceGetPowerUsage`), memory clock frequency (`NVML_CLOCK_MEM`), and memory temperature (`NVML_TEMPERATURE_MEM`).
+    *   *Fallback Method*: Execute `nvidia-smi` as an external command, querying graphic clock frequency, power draw, and memory clock frequency along with existing metrics:
         ```bash
-        nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw --format=csv,noheader,nounits
+        nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw,clocks.current.memory --format=csv,noheader,nounits
         ```
+        *(Note: Memory temperature is not available via standard `nvidia-smi` query parameters and will default to 0.0).*
 *   **AMD & Intel GPUs (sysfs / hwmon)**:
     *   *GPU Power Draw*: Read `/sys/class/drm/card0/device/hwmon/hwmon*/power1_average` (or `power1_input`, reported in microwatts; divided by 1,000,000).
     *   *GPU Busy Percentage*: Read `/sys/class/drm/card0/device/gpu_busy_percent` (or `/sys/class/drm/card0/device/pm_info`).
     *   *VRAM Bytes Used*: Read `/sys/class/drm/card0/device/mem_info_vram_used`.
     *   *VRAM Bytes Total*: Read `/sys/class/drm/card0/device/mem_info_vram_total`.
     *   *GPU Temperature*: Read `/sys/class/drm/card0/device/hwmon/hwmon*/temp1_input`.
+    *   *VRAM Temperature*: Probe `/sys/class/drm/card0/device/hwmon/hwmon*/temp*_label` for labels containing `mem`, `vram`, or `junction`, and read the corresponding `temp*_input` (divided by 1000). If no labels match or are available, fall back to `temp2_input` or `temp3_input` on supported cards.
     *   *GPU Frequency*: Query the active graphics clock frequency in MHz in order of preference:
         1.  Intel Active Frequency: `/sys/class/drm/card*/device/gt_act_freq_mhz` (or `/sys/class/drm/card*/gt_act_freq_mhz`).
         2.  AMD DPM System Clock: `/sys/class/drm/card*/device/pp_dpm_sclk` (parsing the active frequency marked with `*`).
         3.  Hwmon Frequency Input: `/sys/class/drm/card*/device/hwmon/hwmon*/freq1_input` (Hz to MHz conversion).
+    *   *VRAM Frequency*: Query the active VRAM/memory clock frequency in MHz in order of preference:
+        1.  AMD DPM Memory Clock: `/sys/class/drm/card*/device/pp_dpm_mclk` (parsing the active frequency marked with `*`).
+        2.  Hwmon Frequency Input: `/sys/class/drm/card*/device/hwmon/hwmon*/freq2_input` (Hz to MHz conversion).
 
 ---
 
@@ -143,7 +148,9 @@ Pushed automatically once every second.
       "vram_used_bytes": 3121561600,
       "vram_total_bytes": 8589934592,
       "freq_mhz": 1200.0,
-      "power_watts": 125.5
+      "power_watts": 125.5,
+      "vram_temp_celsius": 62.5,
+      "vram_freq_mhz": 1600.0
     },
     "ram": {
       "used_bytes": 14212567040,
