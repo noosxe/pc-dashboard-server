@@ -415,7 +415,14 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. ⚡ Additional Planned Enhancements
+### 9. 🔌 ConnectRPC Alternative Communication Route 🟡 *[Design Phase]*
+Provide a modular, binary-based gRPC/ConnectRPC streaming communication channel running alongside WebSockets over local ADB port tunnels.
+- **H2C Plaintext Transport**: Multiplexed HTTP/2 streaming over local loopback using HTTP/2 cleartext (H2C) to run without TLS over USB link bridges.
+- **Binary Protobuf Payloads**: Minimizes network usage and CPU marshalling overhead on both the Go daemon and Android client.
+- **Raw Image Support**: Supports transferring notification icons and MPRIS album artwork directly as raw bytes, bypassing Base64 overhead.
+- *Status*: Protocol specifications and service architectures established. Awaiting design review and approval.
+
+### 10. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
