@@ -186,6 +186,8 @@ var (
 	telGPUMemUsed  uint64
 	telGPUMemTotal uint64
 	telGPUPower    float64
+	telGPUVramTemp float64
+	telGPUVramFreq float64
 )
 
 // TelemetryCmd triggers system telemetry metrics updates
@@ -210,12 +212,14 @@ var TelemetryCmd = &cobra.Command{
 				Percentage: telRAMPerc,
 			},
 			GPU: metrics.GPUMetrics{
-				UsagePercent:   telGPUUsage,
-				TempCelsius:    telGPUTemp,
-				VramUsedBytes:  telGPUMemUsed,
-				VramTotalBytes: telGPUMemTotal,
-				FreqMHz:        telGPUFreq,
-				PowerWatts:     telGPUPower,
+				UsagePercent:    telGPUUsage,
+				TempCelsius:     telGPUTemp,
+				VramUsedBytes:   telGPUMemUsed,
+				VramTotalBytes:  telGPUMemTotal,
+				FreqMHz:         telGPUFreq,
+				PowerWatts:      telGPUPower,
+				VramTempCelsius: telGPUVramTemp,
+				VramFreqMHz:     telGPUVramFreq,
 			},
 		}
 
@@ -336,6 +340,8 @@ func init() {
 	TelemetryCmd.Flags().Float64Var(&telGPUPower, "gpu-power", 75.0, "GPU active power draw in Watts")
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemUsed, "gpu-mem-used", 2*1024*1024*1024, "GPU VRAM bytes used")
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemTotal, "gpu-mem-total", 8*1024*1024*1024, "GPU VRAM total capacity")
+	TelemetryCmd.Flags().Float64Var(&telGPUVramTemp, "gpu-vram-temp", 55.0, "GPU VRAM memory temperature in Celsius")
+	TelemetryCmd.Flags().Float64Var(&telGPUVramFreq, "gpu-vram-freq", 1500.0, "GPU VRAM active frequency in MHz")
 
 	// Power subcommand flags
 	PowerCmd.Flags().StringVar(&powerActiveProfile, "active", "balanced", "Active power profile (e.g. 'power-saver', 'balanced', 'performance')")

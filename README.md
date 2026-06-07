@@ -17,8 +17,8 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 ## ✨ Features
 
 - **⚡ Lightweight Telemetry Engine**: Asynchronously polls system statistics (CPU, RAM, and GPU) at a steady 1-second interval with less than 15MB of RAM footprint.
-- **🚀 CPU/GPU Frequency Telemetry**: Dynamically extracts active core speeds and graphics engine clock rates (in MHz) every second. Queries average active CPU frequencies via Linux `/sys` scaling interfaces or `gopsutil` CPU core fallbacks. For graphics processors, utilizes custom active frequency sysfs interfaces or dynamic DPM system clock registers for AMD/Intel, alongside CGO-free NVML bindings or structured `nvidia-smi` parses for NVIDIA. Includes full integration with local Unix Domain Socket (UDS) trigger capabilities (`--cpu-freq` and `--gpu-freq`).
-- **🔌 CPU/GPU Power Consumption Telemetry**: Gathers package-level CPU power draw and active GPU power consumption in Watts every second. Accesses CPU power via the unified Linux RAPL sysfs interface (`/sys/class/powercap/intel-rapl`), which natively maps to both Intel and AMD Zen-based processors on modern kernels. For graphics processors, leverages NVML or `nvidia-smi` parameters for NVIDIA GPUs, and queries `sysfs` hwmon paths for AMD/Intel graphics cards. Includes a graceful fallback if permissions are restricted (omitting power fields instead of crashing) and full integration with local UDS trigger commands (`--cpu-power` and `--gpu-power`).
+- **🚀 CPU/GPU/VRAM Frequency Telemetry**: Dynamically extracts active core speeds, graphics engine clock rates, and VRAM memory clock rates (in MHz) every second. Queries average active CPU frequencies via Linux `/sys` scaling interfaces or `gopsutil` CPU core fallbacks. For graphics processors, utilizes custom active frequency sysfs interfaces or dynamic DPM system clock registers for AMD/Intel, alongside CGO-free NVML bindings or structured `nvidia-smi` parses for NVIDIA. Includes full integration with local Unix Domain Socket (UDS) trigger capabilities (`--cpu-freq`, `--gpu-freq`, and `--gpu-vram-freq`).
+- **🔌 CPU/GPU/VRAM Power & Thermal Telemetry**: Gathers package-level CPU power draw, active GPU power consumption, GPU core/edge temperature, and VRAM memory/junction temperature. Accesses CPU power via the unified Linux RAPL sysfs interface (`/sys/class/powercap/intel-rapl`), which natively maps to both Intel and AMD Zen-based processors on modern kernels. For graphics processors, leverages NVML or `nvidia-smi` parameters for NVIDIA GPUs, and queries `sysfs` hwmon paths for AMD/Intel graphics cards, including reading VRAM junction temperatures via hwmon labels (e.g. `temp*_label` matching `mem`, `vram`, or `junction`). Includes a graceful fallback if permissions are restricted (omitting power/thermal fields instead of crashing) and full integration with local UDS trigger commands (`--cpu-power`, `--gpu-power`, and `--gpu-vram-temp`).
 - **🔌 Native ADB Hotplug Tracking**: Directly communicates with the ADB server (`127.0.0.1:5037`) over TCP sockets to monitor USB connections dynamically.
 - **📱 Automatic Bootstrapping & Bypassing**:
   - Automatically wakes up the connected device's screen (`KEYCODE_WAKEUP`).
@@ -352,14 +352,7 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. 📟 GPU VRAM Temperature & Frequency Telemetry 🟡 *[Design Phase]*
-Query and stream dynamic memory (VRAM) temperatures and clock frequencies.
-- **AMD & Intel GPUs**: Read VRAM/memory frequencies from `pp_dpm_mclk` or hwmon `freq2_input` sysfs interfaces, and probe memory/junction temperatures via hwmon sensor inputs and corresponding `temp*_label` metadata.
-- **NVIDIA GPUs**: Extract memory clock frequencies via `nvidia-smi` query parameters (`clocks.current.memory`) or NVML (`NVML_CLOCK_MEM`), and query memory temperatures from NVML API (`NVML_TEMPERATURE_MEM`) where driver/device support is present.
-- **Emulation Support**: Extend the metrics emulator and UDS trigger command protocols to supply simulated VRAM clock speeds and temperatures.
-- *Status*: Solution architecture and protocol specifications established. Awaiting design review and approval.
-
-### 4. ⚡ Additional Planned Enhancements
+### 3. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

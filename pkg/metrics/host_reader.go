@@ -260,7 +260,7 @@ func readNvidiaGPU() (GPUMetrics, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "nvidia-smi",
-		"--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw",
+		"--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw,clocks.current.memory",
 		"--format=csv,noheader,nounits")
 
 	var stdout, stderr bytes.Buffer
@@ -310,6 +310,15 @@ func readNvidiaGPU() (GPUMetrics, error) {
 			m.PowerWatts = power
 		}
 	}
+
+	if len(parts) >= 7 {
+		memFreq, err := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
+		if err == nil {
+			m.VramFreqMHz = memFreq
+		}
+	}
+
+	m.VramTempCelsius = 0.0
 
 	return m, nil
 }
@@ -395,9 +404,14 @@ func readSysfsGPU() (GPUMetrics, error) {
 			}
 		}
 	}
-
 	// 5. GPU Frequency
 	m.FreqMHz = readSysfsGPUFrequency()
+
+	// 6. VRAM Temperature
+	m.VramTempCelsius = readSysfsVRAMTemperature(deviceDir)
+
+	// 7. VRAM Frequency
+	m.VramFreqMHz = readSysfsVRAMFrequency(deviceDir)
 
 	return m, nil
 }
@@ -452,6 +466,95 @@ func readSysfsGPUFrequency() float64 {
 
 	// 3. Hwmon Frequency Input: /sys/class/drm/card*/device/hwmon/hwmon*/freq1_input (Hz to MHz)
 	hwmonFiles, err := filepath.Glob("/sys/class/drm/card*/device/hwmon/hwmon*/freq1_input")
+	if err == nil && len(hwmonFiles) > 0 {
+		for _, file := range hwmonFiles {
+			freqBytes, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			if val, err := strconv.ParseFloat(strings.TrimSpace(string(freqBytes)), 64); err == nil {
+				return val / 1000000.0
+			}
+		}
+	}
+
+	return 0.0
+}
+
+// readSysfsVRAMTemperature reads VRAM/memory temperature from sysfs / hwmon.
+func readSysfsVRAMTemperature(deviceDir string) float64 {
+	hwmonGlob := filepath.Join(deviceDir, "hwmon", "hwmon*", "temp*_input")
+	matches, err := filepath.Glob(hwmonGlob)
+	if err != nil || len(matches) == 0 {
+		return 0.0
+	}
+
+	// 1. Check labels for "mem", "vram", "junction"
+	for _, match := range matches {
+		labelPath := strings.Replace(match, "_input", "_label", 1)
+		if _, err := os.Stat(labelPath); err == nil {
+			lblBytes, err := os.ReadFile(labelPath)
+			if err == nil {
+				lbl := strings.ToLower(strings.TrimSpace(string(lblBytes)))
+				if strings.Contains(lbl, "mem") || strings.Contains(lbl, "vram") || strings.Contains(lbl, "junction") {
+					tempBytes, err := os.ReadFile(match)
+					if err == nil {
+						if val, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
+							return val / 1000.0
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Fallback to temp2_input or temp3_input
+	fallbackPaths := []string{
+		filepath.Join(filepath.Dir(matches[0]), "temp2_input"),
+		filepath.Join(filepath.Dir(matches[0]), "temp3_input"),
+	}
+	for _, path := range fallbackPaths {
+		if _, err := os.Stat(path); err == nil {
+			tempBytes, err := os.ReadFile(path)
+			if err == nil {
+				if val, err := strconv.ParseFloat(strings.TrimSpace(string(tempBytes)), 64); err == nil {
+					return val / 1000.0
+				}
+			}
+		}
+	}
+
+	return 0.0
+}
+
+// readSysfsVRAMFrequency reads VRAM/memory clock frequency in MHz.
+func readSysfsVRAMFrequency(deviceDir string) float64 {
+	// 1. AMD DPM Memory Clock: /sys/class/drm/card*/device/pp_dpm_mclk
+	mclkPath := filepath.Join(deviceDir, "pp_dpm_mclk")
+	if _, err := os.Stat(mclkPath); err == nil {
+		sclkBytes, err := os.ReadFile(mclkPath)
+		if err == nil {
+			lines := strings.Split(string(sclkBytes), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "*") {
+					s := strings.ToLower(line)
+					s = strings.ReplaceAll(s, "*", "")
+					s = strings.ReplaceAll(s, "mhz", "")
+					fields := strings.Fields(s)
+					for _, f := range fields {
+						f = strings.Trim(f, ": \t")
+						if val, err := strconv.ParseFloat(f, 64); err == nil {
+							return val
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Hwmon Frequency Input: /sys/class/drm/card*/device/hwmon/hwmon*/freq2_input (Hz to MHz)
+	hwmonGlob := filepath.Join(deviceDir, "hwmon", "hwmon*", "freq2_input")
+	hwmonFiles, err := filepath.Glob(hwmonGlob)
 	if err == nil && len(hwmonFiles) > 0 {
 		for _, file := range hwmonFiles {
 			freqBytes, err := os.ReadFile(file)
