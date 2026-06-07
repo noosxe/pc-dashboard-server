@@ -60,6 +60,7 @@ The Telemetry engine gathers host statistics every 1.0 second (hardcoded interva
 
 #### A. CPU Statistics
 *   **Usage**: The overall CPU utilization percentage across all logical processors. Calculated dynamically by tracking differences in CPU tick times using `github.com/shirou/gopsutil/v4/cpu`.
+*   **Cores Usage**: An array of float64 percentages representing individual utilization of each logical processor (CPU core) dynamically computed via differences in CPU tick times using `github.com/shirou/gopsutil/v4/cpu` (with `percpu = true`).
 *   **Temperature**: Read from Linux `/sys/` interface.
     *   *Primary Route*: Thermal Zones: `/sys/class/thermal/thermal_zone*/temp` (selecting zones where `type` contains `x86_pkg_temp`, `cpu-thermal`, or `coretemp`).
     *   *Secondary Route*: Hwmon sensors: `/sys/class/hwmon/hwmon*/temp*_input` matching label files containing `Package` or `Core`.
@@ -144,6 +145,7 @@ To allow companion applications to dynamically adapt their interface components 
 
 These boolean fields indicate capability status:
 *   `cpu_usage_supported`: Evaluated by successful gopsutil CPU time query.
+*   `cpu_cores_usage_supported`: Evaluated by successful gopsutil per-core CPU time query.
 *   `cpu_temp_supported`: Evaluated by detection of package/thermal zones temp sysfs interface.
 *   `cpu_freq_supported`: Evaluated by readability of CPU frequency scaling parameters.
 *   `cpu_power_supported`: Evaluated by unprivileged read access to RAPL power counters (`energy_uj`).
@@ -201,7 +203,8 @@ Pushed automatically once every second.
       "usage_percent": 18.7,
       "temp_celsius": 49.0,
       "freq_mhz": 3200.0,
-      "power_watts": 45.2
+      "power_watts": 45.2,
+      "cores_usage_percent": [12.5, 24.1, 8.2, 30.0]
     },
     "gpu": {
       "usage_percent": 41.0,
@@ -232,6 +235,7 @@ Pushed automatically once every second.
     },
     "flags": {
       "cpu_usage_supported": true,
+      "cpu_cores_usage_supported": true,
       "cpu_temp_supported": true,
       "cpu_freq_supported": true,
       "cpu_power_supported": false,
