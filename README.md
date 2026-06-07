@@ -207,6 +207,18 @@ adb:
   target_package: "com.noosxe.pc_dashboard"
   target_activity: "com.noosxe.pc_dashboard.MainActivity"
   no_app_control: false      # Prevents launching or closing the companion Android app
+
+modules:
+  metrics: true              # Toggle host metrics telemetry collection
+  adb: true                  # Toggle ADB device connection tracking
+  mpris: true                # Toggle MPRIS media player remote controls
+  notifications: true        # Toggle D-Bus notifications forwarding
+  lock: true                 # Toggle session lock/unlock monitoring
+  power_profiles: true       # Toggle power profile control loop
+  bluetooth: true            # Toggle BlueZ Bluetooth device monitoring
+  osd: true                  # Toggle OSD volume & lock key status alerts
+  peripherals: true          # Toggle keyboard & mouse battery tracking
+  package_updates: true      # Toggle package manager updates checking
 ```
 
 #### Environment Variables
@@ -366,7 +378,36 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. ⚡ Additional Planned Enhancements
+### 3. 🎛️ On-Screen Display (OSD) Events Sync 🟡 *[Design Phase]*
+Synchronize master audio volume levels, mute states, and keyboard indicator lock statuses (Caps Lock, Num Lock, Scroll Lock) in real-time.
+- **Outbound Stream**: Broadcast volume percent, mute state, and Lock key states immediately upon host adjustments.
+- **Mechanisms**: Subscribes to PulseAudio (`pactl subscribe`) changes and runs a 200ms polling loop on `/sys/class/leds/` keyboard LED files.
+- **Emulation Support**: Includes `--mock-osd` command-line flag and `MockOSDManager` to simulate OSD toggles locally.
+- *Status*: Protocol schema and design established. Awaiting design review and approval.
+
+### 4. 🌡️ CPU/GPU Critical Tmax Metrics 🟡 *[Design Phase]*
+Expose maximum thermal limits (`tmax_celsius`) alongside CPU and GPU temperatures to allow companion apps to dynamically render temperature charts relative to host threshold scales.
+- **Mechanisms**: Reads `/sys/class/hwmon/hwmon*/temp*_crit` for AMD/Intel CPUs and GPUs, and queries NVIDIA NVML thermal thresholds slowdown/shutdown points.
+- *Status*: Telemetry schemas updated. Awaiting design review and approval.
+
+### 5. ⚙️ Modular Subsystem Configuration Toggles 🟡 *[Design Phase]*
+Support selective initialization of daemon subsystems (Metrics, ADB, MPRIS, Notifications, Session Lock, Power Profiles, Bluetooth, OSD, Peripherals, Package Updates) via configuration properties.
+- **Mechanisms**: Configured via the `modules` block in the YAML config file, with corresponding environment variables and command-line flags (e.g., `--disable-mpris`).
+- *Status*: Configuration schemas updated. Awaiting design review and approval.
+
+### 6. 🖱️ Keyboard & Mouse Peripherals Telemetry 🟡 *[Design Phase]*
+Monitor battery capacity levels, charging states, and nominal polling frequencies for connected wireless keyboards and mice.
+- **Mechanisms**: Accesses `org.freedesktop.UPower` on the system D-Bus to capture peripheral device statistics, and parses sysfs USB descriptors (`bInterval`) to compute nominal device polling frequencies in Hertz (Hz).
+- **Emulation Support**: Dedicated `--mock-peripherals` flag triggers a simulation of mouse/keyboard batteries draining in memory.
+- *Status*: Design and interfaces established. Awaiting design review and approval.
+
+### 7. 📦 Package Manager Updates indications 🟡 *[Design Phase]*
+Provide a live notification count of available package updates and standard security updates on the host Linux machine.
+- **Mechanisms**: Subscribes to PackageKit's system D-Bus signals (`UpdatesChanged`) and runs asynchronous transactions to count updates; includes a periodic fallback parser reading `/var/lib/update-notifier/updates-available`.
+- **Emulation Support**: Supported via `--mock-package-updates` flag.
+- *Status*: Design and interfaces established. Awaiting design review and approval.
+
+### 8. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

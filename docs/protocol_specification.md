@@ -101,20 +101,21 @@ Pushed continuously every **1000ms**.
     "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
     "data": {
       "type": "object",
-      "required": ["cpu", "gpu", "ram", "flags"],
+      "required": ["cpu", "gpu", "ram", "peripherals", "package_updates", "flags"],
       "properties": {
         "cpu": {
           "type": "object",
-          "required": ["usage_percent", "temp_celsius", "power_watts"],
+          "required": ["usage_percent", "temp_celsius", "power_watts", "tmax_celsius"],
           "properties": {
             "usage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
             "temp_celsius": { "type": "number" },
-            "power_watts": { "type": "number", "minimum": 0 }
+            "power_watts": { "type": "number", "minimum": 0 },
+            "tmax_celsius": { "type": "number", "description": "Maximum thermal throttle threshold in Celsius; 0.0 if unsupported" }
           }
         },
         "gpu": {
           "type": "object",
-          "required": ["usage_percent", "temp_celsius", "vram_used_bytes", "vram_total_bytes", "power_watts", "vram_temp_celsius", "vram_freq_mhz"],
+          "required": ["usage_percent", "temp_celsius", "vram_used_bytes", "vram_total_bytes", "power_watts", "vram_temp_celsius", "vram_freq_mhz", "tmax_celsius"],
           "properties": {
             "usage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
             "temp_celsius": { "type": "number" },
@@ -122,7 +123,8 @@ Pushed continuously every **1000ms**.
             "vram_total_bytes": { "type": "integer", "minimum": 0 },
             "power_watts": { "type": "number", "minimum": 0 },
             "vram_temp_celsius": { "type": "number", "description": "VRAM memory temperature in Celsius; 0.0 if unsupported" },
-            "vram_freq_mhz": { "type": "number", "minimum": 0, "description": "VRAM memory clock speed in MHz; 0.0 if unsupported" }
+            "vram_freq_mhz": { "type": "number", "minimum": 0, "description": "VRAM memory clock speed in MHz; 0.0 if unsupported" },
+            "tmax_celsius": { "type": "number", "description": "Maximum thermal throttle threshold in Celsius; 0.0 if unsupported" }
           }
         },
         "ram": {
@@ -134,19 +136,49 @@ Pushed continuously every **1000ms**.
             "percentage": { "type": "number", "minimum": 0, "maximum": 100 }
           }
         },
+        "peripherals": {
+          "type": "object",
+          "required": ["devices"],
+          "properties": {
+            "devices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "type", "battery_percent", "charging_state", "poll_rate_hz"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string", "enum": ["keyboard", "mouse"] },
+                  "battery_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+                  "charging_state": { "type": "string", "enum": ["charging", "discharging", "full", "unknown"] },
+                  "poll_rate_hz": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "package_updates": {
+          "type": "object",
+          "required": ["updates_available", "security_updates_available"],
+          "properties": {
+            "updates_available": { "type": "integer", "minimum": 0 },
+            "security_updates_available": { "type": "integer", "minimum": 0 }
+          }
+        },
         "flags": {
           "type": "object",
           "required": [
-            "cpu_usage_supported", "cpu_temp_supported", "cpu_freq_supported", "cpu_power_supported",
+            "cpu_usage_supported", "cpu_temp_supported", "cpu_freq_supported", "cpu_power_supported", "cpu_temp_tmax_supported",
             "ram_supported", "gpu_supported", "gpu_usage_supported", "gpu_temp_supported",
             "gpu_vram_supported", "gpu_freq_supported", "gpu_power_supported",
-            "gpu_vram_temp_supported", "gpu_vram_freq_supported"
+            "gpu_vram_temp_supported", "gpu_vram_freq_supported", "gpu_temp_tmax_supported",
+            "osd_supported", "peripherals_supported", "package_updates_supported"
           ],
           "properties": {
             "cpu_usage_supported": { "type": "boolean" },
             "cpu_temp_supported": { "type": "boolean" },
             "cpu_freq_supported": { "type": "boolean" },
             "cpu_power_supported": { "type": "boolean" },
+            "cpu_temp_tmax_supported": { "type": "boolean" },
             "ram_supported": { "type": "boolean" },
             "gpu_supported": { "type": "boolean" },
             "gpu_usage_supported": { "type": "boolean" },
@@ -155,7 +187,11 @@ Pushed continuously every **1000ms**.
             "gpu_freq_supported": { "type": "boolean" },
             "gpu_power_supported": { "type": "boolean" },
             "gpu_vram_temp_supported": { "type": "boolean" },
-            "gpu_vram_freq_supported": { "type": "boolean" }
+            "gpu_vram_freq_supported": { "type": "boolean" },
+            "gpu_temp_tmax_supported": { "type": "boolean" },
+            "osd_supported": { "type": "boolean" },
+            "peripherals_supported": { "type": "boolean" },
+            "package_updates_supported": { "type": "boolean" }
           }
         }
       }
@@ -808,6 +844,62 @@ This is an event-driven payload pushed asynchronously by the daemon whenever:
 }
 ```
 
+### 3.13. Outbound OSD Event Payload (Host → Android Client)
+This is an event-driven payload pushed asynchronously by the daemon whenever:
+* A system master volume change or mute status change is detected.
+* A keyboard Lock key indicator (Caps Lock, Num Lock, Scroll Lock) state changes.
+
+#### JSON Schema Spec
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OSDEventPush",
+  "type": "object",
+  "required": ["type", "timestamp", "data"],
+  "properties": {
+    "type": { "type": "string", "const": "osd_event" },
+    "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
+    "data": {
+      "type": "object",
+      "required": ["event_type"],
+      "properties": {
+        "event_type": { "type": "string", "enum": ["volume", "mute", "capslock", "numlock", "scrolllock"] },
+        "volume_percent": { "type": "integer", "minimum": 0, "maximum": 100, "description": "System master volume level; only present when event_type is volume or mute" },
+        "muted": { "type": "boolean", "description": "System master mute state; only present when event_type is volume or mute" },
+        "locked": { "type": "boolean", "description": "Keyboard lock key state; only present when event_type is capslock, numlock, or scrolllock" }
+      }
+    }
+  }
+}
+```
+
+#### JSON Payload Examples
+
+* **Volume Changed Event**:
+```json
+{
+  "type": "osd_event",
+  "timestamp": 1716213825,
+  "data": {
+    "event_type": "volume",
+    "volume_percent": 65,
+    "muted": false
+  }
+}
+```
+
+* **Caps Lock Toggled Event**:
+```json
+{
+  "type": "osd_event",
+  "timestamp": 1716213830,
+  "data": {
+    "event_type": "capslock",
+    "locked": true
+  }
+}
+```
+
 ---
 
 ## 4. Connection State Machine & Recovery
@@ -875,7 +967,7 @@ Command clients transmit a single JSON object frame upon successful socket dial.
   "properties": {
     "type": { 
       "type": "string", 
-      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "power_profile_state", "bluetooth_state", "raw"] 
+      "enum": ["session_lock", "notification_event", "media_state", "telemetry", "power_profile_state", "bluetooth_state", "osd_event", "raw"] 
     },
     "data": { 
       "type": "object",
@@ -930,7 +1022,12 @@ Triggers power profile state update.
 *   **Request Data Schema**: See PowerProfileState schema defined in `3.10 Outbound Power Profile State Payload`.
 *   **Daemon Action**: Wraps under `PowerProfileStatePayload` (attaching current server timestamp) and broadcasts.
 
-##### F. `raw` (Arbitrary Passthrough Payload)
+##### F. `osd_event` (On-Screen Display Event)
+Triggers volume adjustments and lock status updates.
+*   **Request Data Schema**: See OSDEventPush schema defined in `3.13. Outbound OSD Event Payload`.
+*   **Daemon Action**: Wraps under `OSDEventPayload` (attaching current server timestamp) and broadcasts.
+
+##### G. `raw` (Arbitrary Passthrough Payload)
 Directly relays custom JSON types to WebSockets without daemon verification.
 *   **Request Format**:
     ```json
