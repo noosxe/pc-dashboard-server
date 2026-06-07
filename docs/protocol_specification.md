@@ -101,7 +101,7 @@ Pushed continuously every **1000ms**.
     "timestamp": { "type": "integer", "description": "Unix timestamp in seconds" },
     "data": {
       "type": "object",
-      "required": ["cpu", "gpu", "ram"],
+      "required": ["cpu", "gpu", "ram", "flags"],
       "properties": {
         "cpu": {
           "type": "object",
@@ -132,6 +132,30 @@ Pushed continuously every **1000ms**.
             "used_bytes": { "type": "integer", "minimum": 0 },
             "total_bytes": { "type": "integer", "minimum": 0 },
             "percentage": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "flags": {
+          "type": "object",
+          "required": [
+            "cpu_usage_supported", "cpu_temp_supported", "cpu_freq_supported", "cpu_power_supported",
+            "ram_supported", "gpu_supported", "gpu_usage_supported", "gpu_temp_supported",
+            "gpu_vram_supported", "gpu_freq_supported", "gpu_power_supported",
+            "gpu_vram_temp_supported", "gpu_vram_freq_supported"
+          ],
+          "properties": {
+            "cpu_usage_supported": { "type": "boolean" },
+            "cpu_temp_supported": { "type": "boolean" },
+            "cpu_freq_supported": { "type": "boolean" },
+            "cpu_power_supported": { "type": "boolean" },
+            "ram_supported": { "type": "boolean" },
+            "gpu_supported": { "type": "boolean" },
+            "gpu_usage_supported": { "type": "boolean" },
+            "gpu_temp_supported": { "type": "boolean" },
+            "gpu_vram_supported": { "type": "boolean" },
+            "gpu_freq_supported": { "type": "boolean" },
+            "gpu_power_supported": { "type": "boolean" },
+            "gpu_vram_temp_supported": { "type": "boolean" },
+            "gpu_vram_freq_supported": { "type": "boolean" }
           }
         }
       }

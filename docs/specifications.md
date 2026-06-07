@@ -97,6 +97,18 @@ The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics
         1.  AMD DPM Memory Clock: `/sys/class/drm/card*/device/pp_dpm_mclk` (parsing the active frequency marked with `*`).
         2.  Hwmon Frequency Input: `/sys/class/drm/card*/device/hwmon/hwmon*/freq2_input` (Hz to MHz conversion).
 
+#### D. Telemetry Support Flags
+To allow companion applications to dynamically adapt their interface components (e.g., hiding temperature or power dials if the underlying system lacks the corresponding sensors or permissions), the telemetry payload includes a structured `flags` block. 
+
+These boolean fields indicate capability status:
+*   `cpu_usage_supported`: Evaluated by successful gopsutil CPU time query.
+*   `cpu_temp_supported`: Evaluated by detection of package/thermal zones temp sysfs interface.
+*   `cpu_freq_supported`: Evaluated by readability of CPU frequency scaling parameters.
+*   `cpu_power_supported`: Evaluated by unprivileged read access to RAPL power counters (`energy_uj`).
+*   `ram_supported`: Evaluated by successful gopsutil virtual memory stats query.
+*   `gpu_supported`: Evaluated by the detection of a supported graphics driver interface (NVML or Sysfs DRM).
+*   `gpu_usage_supported` / `gpu_temp_supported` / `gpu_vram_supported` / `gpu_freq_supported` / `gpu_power_supported` / `gpu_vram_temp_supported` / `gpu_vram_freq_supported`: Evaluated based on the respective reader's ability to locate and query those sensors from the GPU.
+
 ---
 
 ### 3.2. USB Discovery & ADB Bootstrapping Protocol
@@ -156,6 +168,21 @@ Pushed automatically once every second.
       "used_bytes": 14212567040,
       "total_bytes": 34359738368,
       "percentage": 41.3
+    },
+    "flags": {
+      "cpu_usage_supported": true,
+      "cpu_temp_supported": true,
+      "cpu_freq_supported": true,
+      "cpu_power_supported": false,
+      "ram_supported": true,
+      "gpu_supported": true,
+      "gpu_usage_supported": true,
+      "gpu_temp_supported": true,
+      "gpu_vram_supported": true,
+      "gpu_freq_supported": true,
+      "gpu_power_supported": true,
+      "gpu_vram_temp_supported": false,
+      "gpu_vram_freq_supported": true
     }
   }
 }

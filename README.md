@@ -352,7 +352,11 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. ⚡ Additional Planned Enhancements
+### 3. 📊 Telemetry Support Flags 🟡 *[Design Phase]*
+Introduce a `flags` section in the hardware/system telemetry JSON payload (`SystemMetrics`). This section will contain boolean flags mapping to individual telemetry fields (CPU usage, temperature, frequency, power; RAM stats; GPU usage, temperature, VRAM stats, power, VRAM temperature, VRAM frequency) indicating whether the running system's hardware, drivers, and permissions support fetching that specific metric.
+- *Status*: Architecture and protocol design established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
