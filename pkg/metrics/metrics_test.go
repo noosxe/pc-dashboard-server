@@ -80,4 +80,12 @@ func TestMockMetricsReader_GPU(t *testing.T) {
 	if metrics.PowerWatts < 0.0 || metrics.PowerWatts > 1000.0 {
 		t.Errorf("expected GPU PowerWatts in realistic bounds, got %f", metrics.PowerWatts)
 	}
+
+	if metrics.VramTempCelsius < 20.0 || metrics.VramTempCelsius > 115.0 {
+		t.Errorf("expected GPU VramTempCelsius in realistic bounds, got %f", metrics.VramTempCelsius)
+	}
+
+	if metrics.VramFreqMHz < 100.0 || metrics.VramFreqMHz > 4000.0 {
+		t.Errorf("expected GPU VramFreqMHz in realistic bounds, got %f", metrics.VramFreqMHz)
+	}
 }
