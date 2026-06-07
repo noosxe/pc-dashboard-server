@@ -124,6 +124,7 @@ When a new feature is requested, start by laying the technical and architectural
 1.  **Research & Feasibility**: Conduct thorough research to find best-effort, reasonable, and robust solutions. Outline the technical specifications.
 2.  **Security Review**: Carefully consider the security implications of the new feature (e.g., trust boundaries, sensitive data pathways, and loopback safety) and document them.
 3.  **Update Documentation**: Update the existing markdown documentation in the repository (e.g., under `docs/` or `README.md`) to comprehensively describe the planned architecture, protocol changes, and behavior.
+    *   **Telemetry Support Flags Guideline**: If the new feature introduces a new telemetry metric, the design must also define a corresponding boolean flag in the telemetry support flags list, and document it under the Telemetry Support Flags section in [specifications.md](file:///workspaces/pc-dashboard-server/docs/specifications.md).
 4.  **Add to Roadmap**: Add the proposed feature to the **Roadmap** section of `README.md` with a small, clear summary of its scope and status (e.g., `*[Design Phase]*`).
 5.  **Submit for Review**: Commit the documentation changes, push the branch, and open a Pull Request (PR). **When opening the PR for design work, always include a comprehensive summary of the design proposal inside the PR description.**
 
@@ -137,6 +138,7 @@ During this phase, the user reviews the updated documentation to evaluate the pr
 When the user asks for the feature implementation to proceed:
 1.  **Confirm Details**: Review and confirm the exact technical details and schemas established during the Design Phase.
 2.  **Develop & Test**: Implement the production code and corresponding automated tests, verifying everything passes within the devcontainer.
+    *   **Telemetry Support Flags Requirement**: If a new telemetry metric was added, you must implement the corresponding boolean flag in the telemetry payload struct, calculate/determine its value dynamically based on hardware/permission support on the host machine, and update automated tests to verify the flag's behavior.
 3.  **Update README**:
     *   Remove the feature from the **Roadmap** section of `README.md`.
     *   Add the feature under the appropriate section in the **Features** list of `README.md`. If no existing section fits, create a new section.
