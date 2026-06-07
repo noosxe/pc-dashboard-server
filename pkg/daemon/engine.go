@@ -327,10 +327,22 @@ func (e *Engine) runTelemetryLoop(ctx context.Context) {
 				e.logger.Error("Error collecting GPU metrics", "error", err)
 			}
 
+			swapMetrics, err := e.metrics.ReadSwap()
+			if err != nil {
+				e.logger.Error("Error collecting Swap metrics", "error", err)
+			}
+
+			zramMetrics, err := e.metrics.ReadZRAM()
+			if err != nil {
+				e.logger.Error("Error collecting ZRAM metrics", "error", err)
+			}
+
 			sysMetrics := metrics.SystemMetrics{
 				CPU:   cpuMetrics,
 				RAM:   ramMetrics,
 				GPU:   gpuMetrics,
+				Swap:  swapMetrics,
+				ZRAM:  zramMetrics,
 				Flags: e.metrics.GetFlags(),
 			}
 

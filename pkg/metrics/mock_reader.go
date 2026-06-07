@@ -113,6 +113,48 @@ func (r *MockMetricsReader) ReadGPU() (GPUMetrics, error) {
 	}, nil
 }
 
+// ReadSwap generates simulated swap memory stats.
+func (r *MockMetricsReader) ReadSwap() (SwapMetrics, error) {
+	t := time.Since(r.startTime).Seconds()
+	total := uint64(2147483648) // 2GB
+
+	// 500MB +/- 100MB slowly
+	used := float64(524288000) + math.Sin(t/20.0)*104857600
+	usedPercent := (used / float64(total)) * 100.0
+
+	return SwapMetrics{
+		TotalBytes: total,
+		UsedBytes:  uint64(used),
+		Percentage: math.Round(usedPercent*100) / 100,
+	}, nil
+}
+
+// ReadZRAM generates simulated ZRAM stats.
+func (r *MockMetricsReader) ReadZRAM() (ZRAMMetrics, error) {
+	t := time.Since(r.startTime).Seconds()
+	total := uint64(4294967296) // 4GB
+
+	// 1GB uncompressed memory slowly fluctuating
+	orig := float64(1073741824) + math.Sin(t/15.0)*104857600
+	// 350MB compressed size
+	compr := orig / 2.85 // ~2.85 compression ratio
+	// allocator memory usage slightly higher than compressed due to fragmentation
+	memUsed := compr * 1.1
+
+	ratio := 0.0
+	if compr > 0 {
+		ratio = orig / compr
+	}
+
+	return ZRAMMetrics{
+		TotalBytes:         total,
+		OrigDataSizeBytes:  uint64(orig),
+		ComprDataSizeBytes: uint64(compr),
+		MemUsedTotalBytes:  uint64(memUsed),
+		CompressionRatio:   math.Round(ratio*100) / 100,
+	}, nil
+}
+
 // GetFlags returns the support status of system metrics (always true for mock/emulation).
 func (r *MockMetricsReader) GetFlags() TelemetryFlags {
 	return TelemetryFlags{
@@ -121,6 +163,8 @@ func (r *MockMetricsReader) GetFlags() TelemetryFlags {
 		CPUFreqSupported:     true,
 		CPUPowerSupported:    true,
 		RAMSupported:         true,
+		SwapSupported:        true,
+		ZRAMSupported:        true,
 		GPUSupported:         true,
 		GPUUsageSupported:    true,
 		GPUTempSupported:     true,
