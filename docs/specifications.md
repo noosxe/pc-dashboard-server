@@ -561,6 +561,69 @@ The PC Dashboard Server features a dedicated, asynchronous OSD Events Engine tha
 
 ---
 
+### 3.14. App Launcher Engine
+The PC Dashboard Server features a dedicated App Launcher Engine that allows users to launch pre-configured host applications from their companion Android devices.
+
+#### A. Purpose & Rationale
+To ensure the dashboard operates as a useful utility launcher without exposing the host machine to arbitrary Remote Code Execution (RCE) vectors, this module does not support running arbitrary command lines, binary paths, or parameters passed from the client app. Instead, it acts as a key-lookup router against a static whitelist configuration predefined in the server's local configuration.
+
+#### B. Configuration Schema
+The app launcher parameters are defined in `config.yaml` as follows:
+```yaml
+modules:
+  app_launcher: true  # Boolean toggle to enable/disable the app launcher module
+
+app_launcher:
+  apps:
+    steam:
+      name: "Steam"
+      exec: "/usr/bin/steam"
+    discord:
+      name: "Discord"
+      exec: "/usr/bin/discord"
+    browser:
+      name: "Web Browser"
+      exec: "/usr/bin/xdg-open"
+      args: ["https://google.com"]
+```
+
+#### C. WebSocket API Protocols
+* **Inbound Command Payload (Client → Server)**:
+  ```json
+  {
+    "type": "launch_app_command",
+    "app_key": "steam"
+  }
+  ```
+* **Outbound Response Payload (Server → Client)**:
+  Sent to the invoking client immediately upon attempting process execution.
+  ```json
+  {
+    "type": "launch_app_response",
+    "status": "success",
+    "app_key": "steam"
+  }
+  ```
+  Or on failure:
+  ```json
+  {
+    "type": "launch_app_response",
+    "status": "error",
+    "app_key": "steam",
+    "error": "requested app key not configured"
+  }
+  ```
+
+#### D. Process Spawning Mechanism
+Upon receiving a valid `launch_app_command`:
+1. The engine checks if the module is enabled. If disabled, it returns an error response.
+2. The engine looks up the `app_key` in the pre-configured `app_launcher.apps` whitelist. If missing, it returns an error.
+3. The engine asynchronously spawns the process using Go's `os/exec` library (`exec.Command(app.Exec, app.Args...)` and calling `cmd.Start()`).
+4. To prevent blocking the telemetry and server loops, the process is spawned in the background. The engine monitors starting success/failure, returning an error response if the command fails to start (e.g. file not found).
+5. The spawned process inherits the running server daemon's environment context. Because the daemon runs as a user systemd service, it shares the graphical display environment (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`), allowing desktop GUI apps to initialize seamlessly in the active session.
+
+---
+
 ## 4. Security Model & Guidelines
 
 To ensure maximum safety and protect the user's host machine, the daemon adheres to the following secure coding principles:
@@ -582,4 +645,5 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 15. **OSD Event Execution Safeties**: PulseAudio wrapper commands (such as `pactl`) must be called using strictly hardcoded absolute binary paths (e.g., `/usr/bin/pactl`) and fixed arguments. The parsing loop must strictly validate types (parsing integer percentages and booleans), avoiding arbitrary string parsing or log injections.
 16. **Peripherals Read-Only Limits**: Accessing UPower properties over D-Bus system bus must use strictly read-only calls. Sysfs reads for nominal polling rates (`bInterval`) must validate the path target resides under `/sys/` boundaries, using strict file limit constraints to prevent system leaks.
 17. **Package Updates Read-Only Boundaries**: The package updates tracking engine operates strictly in a query-only mode. It must never request or trigger package installations, removals, or system upgrades. PackageKit transaction queries must be validated for boundaries, ensuring zero elevated privilege escalation risks.
+18. **App Launcher Security Boundaries**: The App Launcher engine must strictly enforce whitelist lookup validation. It is forbidden to parse or execute arbitrary execution commands, shell script wrappers, or parameter arrays received via the WebSocket interface. Spawned processes must be invoked directly using Go's `os/exec` libraries without shells (avoid `sh -c` or `bash -c`), and arguments can only be loaded from the static server configuration file to eliminate command or argument injection vectors.
 
