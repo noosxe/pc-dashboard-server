@@ -173,21 +173,34 @@ var MediaCmd = &cobra.Command{
 
 // Telemetry variables
 var (
-	telCPUUsage    float64
-	telCPUTemp     float64
-	telCPUFreq     float64
-	telCPUPower    float64
-	telRAMUsed     uint64
-	telRAMTotal    uint64
-	telRAMPerc     float64
-	telGPUUsage    float64
-	telGPUTemp     float64
-	telGPUFreq     float64
-	telGPUMemUsed  uint64
-	telGPUMemTotal uint64
-	telGPUPower    float64
-	telGPUVramTemp float64
-	telGPUVramFreq float64
+	telCPUUsage             float64
+	telCPUTemp              float64
+	telCPUFreq              float64
+	telCPUPower             float64
+	telRAMUsed              uint64
+	telRAMTotal             uint64
+	telRAMPerc              float64
+	telGPUUsage             float64
+	telGPUTemp              float64
+	telGPUFreq              float64
+	telGPUMemUsed           uint64
+	telGPUMemTotal          uint64
+	telGPUPower             float64
+	telGPUVramTemp          float64
+	telGPUVramFreq          float64
+	telCPUUsageSupported    bool
+	telCPUTempSupported     bool
+	telCPUFreqSupported     bool
+	telCPUPowerSupported    bool
+	telRAMSupported         bool
+	telGPUSupported         bool
+	telGPUUsageSupported    bool
+	telGPUTempSupported     bool
+	telGPUVramSupported     bool
+	telGPUFreqSupported     bool
+	telGPUPowerSupported    bool
+	telGPUVramTempSupported bool
+	telGPUVramFreqSupported bool
 )
 
 // TelemetryCmd triggers system telemetry metrics updates
@@ -220,6 +233,21 @@ var TelemetryCmd = &cobra.Command{
 				PowerWatts:      telGPUPower,
 				VramTempCelsius: telGPUVramTemp,
 				VramFreqMHz:     telGPUVramFreq,
+			},
+			Flags: metrics.TelemetryFlags{
+				CPUUsageSupported:    telCPUUsageSupported,
+				CPUTempSupported:     telCPUTempSupported,
+				CPUFreqSupported:     telCPUFreqSupported,
+				CPUPowerSupported:    telCPUPowerSupported,
+				RAMSupported:         telRAMSupported,
+				GPUSupported:         telGPUSupported,
+				GPUUsageSupported:    telGPUUsageSupported,
+				GPUTempSupported:     telGPUTempSupported,
+				GPUVramSupported:     telGPUVramSupported,
+				GPUFreqSupported:     telGPUFreqSupported,
+				GPUPowerSupported:    telGPUPowerSupported,
+				GPUVramTempSupported: telGPUVramTempSupported,
+				GPUVramFreqSupported: telGPUVramFreqSupported,
 			},
 		}
 
@@ -342,6 +370,20 @@ func init() {
 	TelemetryCmd.Flags().Uint64Var(&telGPUMemTotal, "gpu-mem-total", 8*1024*1024*1024, "GPU VRAM total capacity")
 	TelemetryCmd.Flags().Float64Var(&telGPUVramTemp, "gpu-vram-temp", 55.0, "GPU VRAM memory temperature in Celsius")
 	TelemetryCmd.Flags().Float64Var(&telGPUVramFreq, "gpu-vram-freq", 1500.0, "GPU VRAM active frequency in MHz")
+
+	TelemetryCmd.Flags().BoolVar(&telCPUUsageSupported, "cpu-usage-supported", true, "CPU usage supported flag")
+	TelemetryCmd.Flags().BoolVar(&telCPUTempSupported, "cpu-temp-supported", true, "CPU temperature supported flag")
+	TelemetryCmd.Flags().BoolVar(&telCPUFreqSupported, "cpu-freq-supported", true, "CPU frequency supported flag")
+	TelemetryCmd.Flags().BoolVar(&telCPUPowerSupported, "cpu-power-supported", true, "CPU power supported flag")
+	TelemetryCmd.Flags().BoolVar(&telRAMSupported, "ram-supported", true, "RAM supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUSupported, "gpu-supported", true, "GPU supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUUsageSupported, "gpu-usage-supported", true, "GPU usage supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUTempSupported, "gpu-temp-supported", true, "GPU temperature supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUVramSupported, "gpu-vram-supported", true, "GPU VRAM supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUFreqSupported, "gpu-freq-supported", true, "GPU frequency supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUPowerSupported, "gpu-power-supported", true, "GPU power supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUVramTempSupported, "gpu-vram-temp-supported", true, "GPU VRAM temperature supported flag")
+	TelemetryCmd.Flags().BoolVar(&telGPUVramFreqSupported, "gpu-vram-freq-supported", true, "GPU VRAM frequency supported flag")
 
 	// Power subcommand flags
 	PowerCmd.Flags().StringVar(&powerActiveProfile, "active", "balanced", "Active power profile (e.g. 'power-saver', 'balanced', 'performance')")

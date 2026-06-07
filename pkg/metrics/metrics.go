@@ -27,11 +27,29 @@ type GPUMetrics struct {
 	VramFreqMHz     float64 `json:"vram_freq_mhz"`
 }
 
+// TelemetryFlags represents supported telemetry features on the host machine.
+type TelemetryFlags struct {
+	CPUUsageSupported    bool `json:"cpu_usage_supported"`
+	CPUTempSupported     bool `json:"cpu_temp_supported"`
+	CPUFreqSupported     bool `json:"cpu_freq_supported"`
+	CPUPowerSupported    bool `json:"cpu_power_supported"`
+	RAMSupported         bool `json:"ram_supported"`
+	GPUSupported         bool `json:"gpu_supported"`
+	GPUUsageSupported    bool `json:"gpu_usage_supported"`
+	GPUTempSupported     bool `json:"gpu_temp_supported"`
+	GPUVramSupported     bool `json:"gpu_vram_supported"`
+	GPUFreqSupported     bool `json:"gpu_freq_supported"`
+	GPUPowerSupported    bool `json:"gpu_power_supported"`
+	GPUVramTempSupported bool `json:"gpu_vram_temp_supported"`
+	GPUVramFreqSupported bool `json:"gpu_vram_freq_supported"`
+}
+
 // SystemMetrics combines all gathered hardware statistics.
 type SystemMetrics struct {
-	CPU CPUMetrics `json:"cpu"`
-	RAM RAMMetrics `json:"ram"`
-	GPU GPUMetrics `json:"gpu"`
+	CPU   CPUMetrics     `json:"cpu"`
+	RAM   RAMMetrics     `json:"ram"`
+	GPU   GPUMetrics     `json:"gpu"`
+	Flags TelemetryFlags `json:"flags"`
 }
 
 // MetricsReader defines the contract for reading system performance telemetry.
@@ -44,4 +62,7 @@ type MetricsReader interface {
 
 	// ReadGPU returns graphics processor core usage, temperature, and VRAM utilization.
 	ReadGPU() (GPUMetrics, error)
+
+	// GetFlags returns the support status of system metrics.
+	GetFlags() TelemetryFlags
 }

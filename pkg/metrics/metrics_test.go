@@ -89,3 +89,37 @@ func TestMockMetricsReader_GPU(t *testing.T) {
 		t.Errorf("expected GPU VramFreqMHz in realistic bounds, got %f", metrics.VramFreqMHz)
 	}
 }
+
+func TestMockMetricsReader_GetFlags(t *testing.T) {
+	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	flags := reader.GetFlags()
+
+	if !flags.CPUUsageSupported || !flags.CPUTempSupported || !flags.CPUFreqSupported || !flags.CPUPowerSupported {
+		t.Errorf("expected all CPU flags to be true, got %+v", flags)
+	}
+	if !flags.RAMSupported {
+		t.Errorf("expected RAMSupported to be true, got %+v", flags)
+	}
+	if !flags.GPUSupported || !flags.GPUUsageSupported || !flags.GPUTempSupported || !flags.GPUVramSupported || !flags.GPUFreqSupported || !flags.GPUPowerSupported || !flags.GPUVramTempSupported || !flags.GPUVramFreqSupported {
+		t.Errorf("expected all GPU flags to be true, got %+v", flags)
+	}
+}
+
+func TestHostMetricsReader_GetFlags(t *testing.T) {
+	reader := NewHostMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Initially flags might be unpopulated or partially populated by warming up CPU times
+	_ = reader.GetFlags()
+
+	// Trigger reads to populate flags
+	_, _ = reader.ReadCPU()
+	_, _ = reader.ReadRAM()
+	_, _ = reader.ReadGPU()
+
+	flags := reader.GetFlags()
+	// At least RAMSupported should be true on standard Linux devcontainer
+	if !flags.RAMSupported {
+		t.Logf("Warning: RAMSupported is false (could be non-Linux environment in testing)")
+	}
+	t.Logf("Host flags dynamically resolved: %+v", flags)
+}
