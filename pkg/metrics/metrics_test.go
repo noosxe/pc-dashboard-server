@@ -90,6 +90,46 @@ func TestMockMetricsReader_GPU(t *testing.T) {
 	}
 }
 
+func TestMockMetricsReader_Swap(t *testing.T) {
+	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	metrics, err := reader.ReadSwap()
+	if err != nil {
+		t.Fatalf("unexpected error reading Swap: %v", err)
+	}
+
+	if metrics.TotalBytes != 2147483648 {
+		t.Errorf("expected Swap TotalBytes to be exactly 2GB (2147483648), got %d", metrics.TotalBytes)
+	}
+
+	if metrics.UsedBytes > metrics.TotalBytes {
+		t.Errorf("expected Swap UsedBytes (%d) to be <= TotalBytes (%d)", metrics.UsedBytes, metrics.TotalBytes)
+	}
+
+	if metrics.Percentage < 0.0 || metrics.Percentage > 100.0 {
+		t.Errorf("expected Swap Percentage in [0, 100], got %f", metrics.Percentage)
+	}
+}
+
+func TestMockMetricsReader_ZRAM(t *testing.T) {
+	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	metrics, err := reader.ReadZRAM()
+	if err != nil {
+		t.Fatalf("unexpected error reading ZRAM: %v", err)
+	}
+
+	if metrics.TotalBytes != 4294967296 {
+		t.Errorf("expected ZRAM TotalBytes to be exactly 4GB (4294967296), got %d", metrics.TotalBytes)
+	}
+
+	if metrics.ComprDataSizeBytes > metrics.OrigDataSizeBytes {
+		t.Errorf("expected ZRAM ComprDataSizeBytes (%d) to be <= OrigDataSizeBytes (%d)", metrics.ComprDataSizeBytes, metrics.OrigDataSizeBytes)
+	}
+
+	if metrics.CompressionRatio < 1.0 || metrics.CompressionRatio > 5.0 {
+		t.Errorf("expected ZRAM CompressionRatio to be in realistic bounds, got %f", metrics.CompressionRatio)
+	}
+}
+
 func TestMockMetricsReader_GetFlags(t *testing.T) {
 	reader := NewMockMetricsReader(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	flags := reader.GetFlags()
@@ -99,6 +139,12 @@ func TestMockMetricsReader_GetFlags(t *testing.T) {
 	}
 	if !flags.RAMSupported {
 		t.Errorf("expected RAMSupported to be true, got %+v", flags)
+	}
+	if !flags.SwapSupported {
+		t.Errorf("expected SwapSupported to be true, got %+v", flags)
+	}
+	if !flags.ZRAMSupported {
+		t.Errorf("expected ZRAMSupported to be true, got %+v", flags)
 	}
 	if !flags.GPUSupported || !flags.GPUUsageSupported || !flags.GPUTempSupported || !flags.GPUVramSupported || !flags.GPUFreqSupported || !flags.GPUPowerSupported || !flags.GPUVramTempSupported || !flags.GPUVramFreqSupported {
 		t.Errorf("expected all GPU flags to be true, got %+v", flags)
@@ -115,6 +161,8 @@ func TestHostMetricsReader_GetFlags(t *testing.T) {
 	_, _ = reader.ReadCPU()
 	_, _ = reader.ReadRAM()
 	_, _ = reader.ReadGPU()
+	_, _ = reader.ReadSwap()
+	_, _ = reader.ReadZRAM()
 
 	flags := reader.GetFlags()
 	// At least RAMSupported should be true on standard Linux devcontainer

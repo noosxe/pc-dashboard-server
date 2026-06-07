@@ -119,6 +119,103 @@ func (r *HostMetricsReader) ReadRAM() (RAMMetrics, error) {
 	return m, nil
 }
 
+// ReadSwap retrieves swap memory information.
+func (r *HostMetricsReader) ReadSwap() (SwapMetrics, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var m SwapMetrics
+	v, err := mem.SwapMemory()
+	r.flags.SwapSupported = err == nil
+	if err != nil {
+		return m, err
+	}
+	m.TotalBytes = v.Total
+	m.UsedBytes = v.Used
+	m.Percentage = v.UsedPercent
+	return m, nil
+}
+
+// ReadZRAM retrieves compressed ZRAM information.
+func (r *HostMetricsReader) ReadZRAM() (ZRAMMetrics, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var m ZRAMMetrics
+	// Glob for zram block devices
+	matches, err := filepath.Glob("/sys/block/zram*")
+	if err != nil || len(matches) == 0 {
+		r.flags.ZRAMSupported = false
+		return m, nil
+	}
+
+	var totalDiskSize uint64
+	var totalOrigDataSize uint64
+	var totalComprDataSize uint64
+	var totalMemUsed uint64
+	hasAnyZram := false
+
+	for _, dir := range matches {
+		// Read disksize
+		disksizeBytes, err := os.ReadFile(filepath.Join(dir, "disksize"))
+		if err != nil {
+			continue
+		}
+		disksize, err := strconv.ParseUint(strings.TrimSpace(string(disksizeBytes)), 10, 64)
+		if err != nil {
+			continue
+		}
+
+		// Read mm_stat
+		mmStatBytes, err := os.ReadFile(filepath.Join(dir, "mm_stat"))
+		if err != nil {
+			continue
+		}
+		fields := strings.Fields(strings.TrimSpace(string(mmStatBytes)))
+		if len(fields) < 3 {
+			continue
+		}
+
+		origDataSize, err := strconv.ParseUint(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+		comprDataSize, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		memUsed, err := strconv.ParseUint(fields[2], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		totalDiskSize += disksize
+		totalOrigDataSize += origDataSize
+		totalComprDataSize += comprDataSize
+		totalMemUsed += memUsed
+		hasAnyZram = true
+	}
+
+	r.flags.ZRAMSupported = hasAnyZram
+	if !hasAnyZram {
+		return m, nil
+	}
+
+	m.TotalBytes = totalDiskSize
+	m.OrigDataSizeBytes = totalOrigDataSize
+	m.ComprDataSizeBytes = totalComprDataSize
+	m.MemUsedTotalBytes = totalMemUsed
+
+	if totalComprDataSize > 0 {
+		ratio := float64(totalOrigDataSize) / float64(totalComprDataSize)
+		m.CompressionRatio = math.Round(ratio*100) / 100
+	} else {
+		m.CompressionRatio = 0.0
+	}
+
+	return m, nil
+}
+
 // ReadGPU retrieves graphics processor metrics.
 func (r *HostMetricsReader) ReadGPU() (GPUMetrics, error) {
 	r.mu.Lock()
