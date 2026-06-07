@@ -283,6 +283,18 @@ The daemon pushes structured telemetry payloads every second to all connected We
       "used_bytes": 14212567040,
       "total_bytes": 34359738368,
       "percentage": 41.3
+    },
+    "swap": {
+      "used_bytes": 524288000,
+      "total_bytes": 2147483648,
+      "percentage": 24.4
+    },
+    "zram": {
+      "orig_data_size_bytes": 1073741824,
+      "compr_data_size_bytes": 377487360,
+      "mem_used_total_bytes": 419430400,
+      "total_bytes": 4294967296,
+      "compression_ratio": 2.84
     }
   }
 }
@@ -353,7 +365,14 @@ Passively monitor host Bluetooth devices via the Linux BlueZ D-Bus system servic
 - **Event-Driven Architecture**: Uses `GetManagedObjects` bootstrap, `InterfacesAdded`/`InterfacesRemoved` and `PropertiesChanged` D-Bus signals for zero-poll connect/disconnect detection. No active scanning or device mutation.
 - **Emulation Support**: Dedicated `--mock-bluetooth` flag activates `MockBluetoothManager` with a scripted 3-device roster (headphones, keyboard, game controller) simulating a realistic connection sequence, battery drain, and RSSI oscillation.
 - *Status*: Architecture and protocol design established. Awaiting design review and approval.
-### 3. ⚡ Additional Planned Enhancements
+### 3. 💾 Swap and ZRAM Telemetry Metrics 🟡 *[Design Phase]*
+Passively track host swap memory and ZRAM compressed memory telemetry to monitor memory optimization and device usage.
+- **Outbound Stream**: Add `swap` and `zram` sub-blocks to outbound telemetry JSON frames, along with `swap_supported` and `zram_supported` capability flags.
+- **Swap telemetry**: Query utilized bytes, total bytes, and utilization percentage via standard virtual memory APIs.
+- **ZRAM telemetry**: Aggregates size, uncompressed data size, compressed data size, and allocator memory consumption across all active `/sys/block/zram*` sysfs devices, computing an overall compression ratio.
+- *Status*: Architecture and protocol design established. Awaiting design review and approval.
+
+### 4. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
