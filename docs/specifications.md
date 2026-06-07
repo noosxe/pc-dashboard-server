@@ -97,7 +97,20 @@ The daemon supports both NVIDIA (proprietary) and open-source AMD/Intel graphics
         1.  AMD DPM Memory Clock: `/sys/class/drm/card*/device/pp_dpm_mclk` (parsing the active frequency marked with `*`).
         2.  Hwmon Frequency Input: `/sys/class/drm/card*/device/hwmon/hwmon*/freq2_input` (Hz to MHz conversion).
 
-#### D. Telemetry Support Flags
+#### D. Swap Statistics
+*   **Total / Used**: Read in bytes.
+*   **Utilization**: Total swap memory utilization percentage.
+*   **Retrieval**: Captured using `github.com/shirou/gopsutil/v4/mem` (`SwapMemory()`).
+
+#### E. ZRAM Compressed Memory Statistics
+*   **Total Bytes**: Total size of ZRAM disk spaces in bytes.
+*   **Original Data Bytes**: Uncompressed size of data stored in ZRAM.
+*   **Compressed Data Bytes**: Compressed size of data stored in ZRAM.
+*   **Memory Used Total**: Total physical RAM allocated for ZRAM, including allocator fragmentation and metadata overhead.
+*   **Compression Ratio**: Calculated ratio of `Original Data Bytes` divided by `Compressed Data Bytes` (when compressed size > 0), rounded to 2 decimal places.
+*   **Retrieval**: Discovered by globbing active ZRAM device directories `/sys/block/zram*`. Total bytes are read from `/sys/block/zram<id>/disksize`, and memory stats are parsed from `/sys/block/zram<id>/mm_stat` (containing space-separated values for uncompressed, compressed, and allocator memory totals). Values are accumulated across all active ZRAM devices.
+
+#### F. Telemetry Support Flags
 To allow companion applications to dynamically adapt their interface components (e.g., hiding temperature or power dials if the underlying system lacks the corresponding sensors or permissions), the telemetry payload includes a structured `flags` block. 
 
 These boolean fields indicate capability status:
@@ -106,6 +119,8 @@ These boolean fields indicate capability status:
 *   `cpu_freq_supported`: Evaluated by readability of CPU frequency scaling parameters.
 *   `cpu_power_supported`: Evaluated by unprivileged read access to RAPL power counters (`energy_uj`).
 *   `ram_supported`: Evaluated by successful gopsutil virtual memory stats query.
+*   `swap_supported`: Evaluated by successful gopsutil swap memory stats query.
+*   `zram_supported`: Evaluated by successful discovery of active ZRAM block devices and readability of their sysfs attributes.
 *   `gpu_supported`: Evaluated by the detection of a supported graphics driver interface (NVML or Sysfs DRM).
 *   `gpu_usage_supported` / `gpu_temp_supported` / `gpu_vram_supported` / `gpu_freq_supported` / `gpu_power_supported` / `gpu_vram_temp_supported` / `gpu_vram_freq_supported`: Evaluated based on the respective reader's ability to locate and query those sensors from the GPU.
 
@@ -169,12 +184,26 @@ Pushed automatically once every second.
       "total_bytes": 34359738368,
       "percentage": 41.3
     },
+    "swap": {
+      "used_bytes": 524288000,
+      "total_bytes": 2147483648,
+      "percentage": 24.4
+    },
+    "zram": {
+      "orig_data_size_bytes": 1073741824,
+      "compr_data_size_bytes": 377487360,
+      "mem_used_total_bytes": 419430400,
+      "total_bytes": 4294967296,
+      "compression_ratio": 2.84
+    },
     "flags": {
       "cpu_usage_supported": true,
       "cpu_temp_supported": true,
       "cpu_freq_supported": true,
       "cpu_power_supported": false,
       "ram_supported": true,
+      "swap_supported": true,
+      "zram_supported": true,
       "gpu_supported": true,
       "gpu_usage_supported": true,
       "gpu_temp_supported": true,
@@ -497,4 +526,5 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 11. **Power Profile Input Sanitization**: Power profile selection commands received via WebSockets are strictly validated against the read-only list of available profiles fetched from the system D-Bus before execution. Any unrecognized strings are immediately dropped, preventing D-Bus property injection or arbitrary system parameter manipulation.
 12. **Bluetooth Passive Monitoring & Privacy**: The Bluetooth monitoring module operates in a strictly read-only, passive mode. It must never invoke state-mutating BlueZ methods (`StartDiscovery`, `Connect`, `Disconnect`, `RemoveDevice`, `Pair`, etc.) under any circumstances. Outbound `bluetooth_state` payloads are limited to display-relevant fields (`address`, `name`, `alias`, `class`, `battery_percent`, `rssi`, `connected`, `paired`, `trusted`); raw GATT UUIDs, manufacturer data, and service records are excluded to minimize hardware fingerprinting exposure. Bluetooth MAC addresses are logged only at `debug` level to prevent hardware identifier leakage in production journal output.
 13. **Unprivileged CPU Power Telemetry Safeties**: When reading CPU power consumption via RAPL sysfs attributes (`energy_uj`), the daemon must operate in a strictly read-only mode. Elevated privilege configurations (such as configuring world-readable files via `sysfsutils` or group ownership/permissions via `udev` rules) are external system configurations; the daemon itself must never attempt to execute `chmod`, `chown`, or modify file system permissions dynamically. If read permissions are absent, the daemon must gracefully fall back by omitting CPU power fields from telemetry frames rather than failing.
+14. **Swap and ZRAM Telemetry Safeties**: The daemon queries swap metrics via standard `gopsutil` APIs and ZRAM statistics via sysfs `/sys/block/zram*` nodes. The operations must be strictly read-only and run in user space, requiring zero elevated root privileges or modifications to the host storage/memory configurations.
 
