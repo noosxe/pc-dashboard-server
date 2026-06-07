@@ -29,6 +29,7 @@ This document outlines the selected tools, libraries, and protocols to implement
 | **OSD Events Monitoring** | Native sysfs / `pactl` CLI | Subscribes to `/usr/bin/pactl` events for volume adjustments and polls `/sys/class/leds/` for Lock key state changes. | None (Pure Go) | **Safe**: Standard sysfs file reads. Command execution strictly validated with absolute binary paths. |
 | **UPower Peripherals** | `github.com/godbus/dbus/v5` | Direct system D-Bus connection to UPower (`org.freedesktop.UPower`) to query mouse and keyboard battery levels. | None (Pure Go) | **Safe**: Strictly read-only properties query on UPower. |
 | **Package Updates** | `github.com/godbus/dbus/v5` / Native file parser | Direct system D-Bus connection to `org.freedesktop.PackageKit` to query updates; falls back to `/var/lib/update-notifier/updates-available`. | None (Pure Go) | **Safe**: Read-only queries and signals monitoring. No package mutations are executed. |
+| **App Launcher Engine** | Go Standard `os/exec` | Spawns pre-configured host applications from their whitelisted keys. | None (Pure Go) | **Safe**: Rigid whitelist lookup, absolute path checks, and zero shell argument expansions prevent injection vulnerability risks. |
 
 ---
 
@@ -89,6 +90,7 @@ graph TD
     DaemonCore -->|uses| OSDManager[OSDManager Interface]
     DaemonCore -->|uses| PeripheralsManager[PeripheralsManager Interface]
     DaemonCore -->|uses| PackageUpdatesManager[PackageUpdatesManager Interface]
+    DaemonCore -->|uses| AppLauncherManager[AppLauncherManager Interface]
     
     MetricsReader -.->|Implementation| RealMetrics[HostMetricsReader <br>gopsutil + sysfs]
     MetricsReader -.->|Implementation| MockMetrics[MockMetricsReader <br>Simulated Wave Data]
@@ -119,6 +121,9 @@ graph TD
 
     PackageUpdatesManager -.->|Implementation| DbusUpdates[DbusPackageUpdatesManager <br>Pure Go D-Bus PackageKit]
     PackageUpdatesManager -.->|Implementation| MockUpdates[MockPackageUpdatesManager <br>Simulated package updates counts]
+
+    AppLauncherManager -.->|Implementation| HostLauncher[HostAppLauncherManager <br>Go standard os/exec]
+    AppLauncherManager -.->|Implementation| MockLauncher[MockAppLauncherManager <br>In-memory state simulation]
 ```
 
 ### 4.1. Metrics Collection Interface (`MetricsReader`)
@@ -539,7 +544,29 @@ type PackageUpdatesManager interface {
 	1.  `DbusPackageUpdatesManager`: Production manager connecting to the D-Bus System Bus, listening for PackageKit's `UpdatesChanged` signals, and starting temporary transactions to query `GetUpdates()` asynchronously; includes local notifier file reading fallback.
 	2.  `MockPackageUpdatesManager`: Emulation client that increments available update counts on a slow timer in memory.
 
-### 4.11. Application Package & Module Layout
+### 4.11. App Launcher Interface (`AppLauncherManager`)
+The host application execution service communicates exclusively through this interface:
+
+```go
+package applauncher
+
+import "context"
+
+// AppLauncherManager defines the contract for launching whitelisted host applications.
+type AppLauncherManager interface {
+	// LaunchApp launches a pre-configured host application mapped to the given key.
+	LaunchApp(ctx context.Context, appKey string) error
+
+	// IsWhitelisted returns true if the application key is defined in the configuration whitelist.
+	IsWhitelisted(appKey string) bool
+}
+```
+
+*   **Implementations**:
+	1.  `HostAppLauncherManager`: Production manager that looks up the requested `app_key` in the static whitelist, performs path verification, and spawns the process asynchronously using Go's `os/exec` library (`cmd.Start()`) while passing the daemon's active graphical environment context.
+	2.  `MockAppLauncherManager`: Emulation manager that checks keys against a mock whitelist and simulates execution success/failure states in-memory.
+
+### 4.12. Application Package & Module Layout
 
 To enforce strict boundary segregation, testability, and swappability, the Go daemon codebase is organized into isolated packages with specific, single-responsibility boundaries:
 
@@ -593,6 +620,10 @@ pc-dashboard-server/
 │   │   ├── updates.go            # PackageUpdatesManager interface & models
 │   │   ├── dbus_manager.go       # Production PackageUpdatesManager (D-Bus PackageKit + file fallback)
 │   │   └── mock_manager.go       # Simulated updates counts increments
+│   ├── applauncher/              # App launcher execution module
+│   │   ├── applauncher.go        # AppLauncherManager interface
+│   │   ├── host_manager.go       # Production AppLauncherManager (os/exec)
+│   │   └── mock_manager.go       # Simulated app launcher state generator
 │   ├── websocket/                # Multi-client local websocket communication module
 │   │   ├── server.go             # Gorilla-websocket host bind:127.0.0.1:12345
 │   │   └── connection_pool.go    # Thread-safe concurrent writing and ping/pong keepalive
@@ -604,7 +635,7 @@ pc-dashboard-server/
 
 #### Module Interactions & Orchestration
 
-1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It parses the configuration and checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`, `--mock-bluetooth`) or YAML values. It then instantiates the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, `BluetoothManager`, `OSDManager`, `PeripheralsManager`, and `PackageUpdatesManager`.
+1. **Bootstrap Phase**: The `cmd/start.go` module loads configuration variables via `pkg/config`. It parses the configuration and checks CLI flags (e.g. `--emulate-metrics`, `--mock-adb`, `--mock-bluetooth`) or YAML values. It then instantiates the requested implementations of `MetricsReader`, `ADBClient`, `MPRISManager`, `NotificationManager`, `LockManager`, `PowerProfilesManager`, `BluetoothManager`, `OSDManager`, `PeripheralsManager`, `PackageUpdatesManager`, and `AppLauncherManager`.
    *   *Module Toggles*: If any module is toggled to `false` in the `modules` configuration block, `start.go` skips its instantiation, and the system records the module as disabled (logging the state at `info` level).
 2. **Injection Phase**: All active manager instances are injected directly into the `pkg/daemon` Orchestrator module.
 3. **Tracking Phase**: The `pkg/daemon` engine starts the device tracking routine via the injected `ADBClient`. On detecting an `online` event, it performs the bootstrap (wake device, launch package `com.noosxe.pc_dashboard`, reverse port tunnel).
@@ -614,7 +645,7 @@ pc-dashboard-server/
    *   *Session Lock State Caching*: To ensure newly connected clients are immediately aware of the host machine's lock state, the orchestration engine caches the last received `session_lock` status in memory. When a client establishes a new WebSocket connection, the engine is notified via an `onConnect` callback and immediately streams the cached session lock state to that client.
    *   *Power Profile Caching*: Similarly, the engine caches the last received `power_profile_state` to immediately push the current system profile and list of available profiles to clients as soon as they connect.
    *   *Bluetooth State Caching*: The engine caches the last `bluetooth_state` payload (full `connected_devices` list). When a new client connects, the cached Bluetooth state is immediately pushed alongside the session lock and power profile caches.
-5. **Command Ingestion Phase**: WebSocket clients send `notification_command`, `media_command`, or `power_profile_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager`, `MPRISManager`, or `PowerProfilesManager` to execute actions or trigger properties writes on the host system. If a requested control command targets a disabled module, the daemon drops the frame and writes an error log at `warn` level.
+5. **Command Ingestion Phase**: WebSocket clients send `notification_command`, `media_command`, `power_profile_command`, or `launch_app_command` JSON frames to `/ws`. The WebSocket pool parses these frames and forwards them via the orchestration engine to `NotificationManager`, `MPRISManager`, `PowerProfilesManager`, or `AppLauncherManager` to execute actions or trigger properties writes/process spawns on the host system. If a requested control command targets a disabled module, the daemon drops the frame and writes an error log at `warn` level.
 6. **Local Command Socket Triggering**: 
    *   When the daemon starts, the `pkg/daemon` engine starts the `command_listener` goroutine which binds to a local Unix Domain Socket (default `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
    *   The CLI `cmd/trigger.go` command runs as a separate process invocation. It validates the user's requested trigger (lock, unlock, notification, power profile, OSD, etc.), constructs a structured `UDSRequest`, dials the Unix socket, and transmits the payload.

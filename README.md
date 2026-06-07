@@ -407,7 +407,14 @@ Provide a live notification count of available package updates and standard secu
 - **Emulation Support**: Supported via `--mock-package-updates` flag.
 - *Status*: Design and interfaces established. Awaiting design review and approval.
 
-### 8. ⚡ Additional Planned Enhancements
+### 8. 🚀 Host App Launcher 🟡 *[Design Phase]*
+Allow launching pre-configured host applications (e.g., Steam, Discord, browsers) directly from the companion Android app dashboard.
+- **Strict Whitelist Execution Model**: To prevent Remote Code Execution (RCE) vulnerabilities, arbitrary terminal commands or scripts are strictly prohibited. The daemon will only spawn processes mapping to predefined keys declared in the user's local `config.yaml`.
+- **Inbound WebSocket Command**: Implements a `launch_app_command` payload containing a valid whitelisted `app_key`.
+- **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
+- *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
+
+### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
