@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package pcd.v1;
+
+option go_package = "github.com/noosxe/pc-dashboard-server/pkg/api/pcd/v1;pcdv1";
+
+message MediaTrackMetadata {
+  string track_id = 1;
+  string title = 2;
+  repeated string artist = 3;
+  string album = 4;
+  string art_url = 5;
+  bytes art_raw = 6; // Raw image byte data, avoiding Base64 encoding!
+  int64 length_microseconds = 7;
+}
+
+message MediaPlayerState {
+  string player_name = 1;
+  string identity = 2;
+  string desktop_entry = 3;
+  string playback_status = 4; // "Playing", "Paused", "Stopped"
+  double volume = 5;
+  int64 position_microseconds = 6;
+  MediaTrackMetadata metadata = 7;
+}
+
+message MediaStatePayload {
+  repeated MediaPlayerState active_players = 1;
+}
+
+message StreamMediaStateRequest {}
+
+message StreamMediaStateResponse {
+  int64 timestamp = 1;
+  MediaStatePayload payload = 2;
+}
+
+message SendMediaCommandRequest {
+  string player_name = 1;
+  string command = 2; // e.g. "play", "pause", "play_pause", "stop", "next", "previous", "seek", "set_position", "set_volume"
+  
+  // Optional arguments using 'optional' to handle nullability cleanly in Go/Kotlin
+  optional int64 offset_microseconds = 3;
+  optional int64 position_microseconds = 4;
+  optional string track_id = 5;
+  optional double volume = 6;
+}
+
+message SendMediaCommandResponse {
+  bool success = 1;
+}
+
+service MediaService {
+  rpc StreamMediaState(StreamMediaStateRequest) returns (stream StreamMediaStateResponse);
+  rpc SendMediaCommand(SendMediaCommandRequest) returns (SendMediaCommandResponse);
+}

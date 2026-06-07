@@ -246,6 +246,40 @@ func (e *Engine) handleCommandConnection(conn net.Conn) {
 	// Broadcast the constructed payload to all active websocket clients
 	e.pool.Broadcast(broadcastPayload)
 
+	// Broadcast to ConnectRPC streams if applicable
+	switch req.Type {
+	case "session_lock":
+		var ev lock.SessionLockEvent
+		if json.Unmarshal(req.Data, &ev) == nil {
+			e.connectrpcServer.BroadcastSystemLock(ev)
+		}
+	case "dpms":
+		var ev dpms.DpmsEvent
+		if json.Unmarshal(req.Data, &ev) == nil {
+			e.connectrpcServer.BroadcastDpms(ev)
+		}
+	case "notification_event":
+		var ev notifications.NotificationEvent
+		if json.Unmarshal(req.Data, &ev) == nil {
+			e.connectrpcServer.BroadcastNotification(ev)
+		}
+	case "media_state":
+		var ev mpris.MediaEvent
+		if json.Unmarshal(req.Data, &ev) == nil {
+			e.connectrpcServer.BroadcastMediaState(ev)
+		}
+	case "telemetry":
+		var ev metrics.SystemMetrics
+		if json.Unmarshal(req.Data, &ev) == nil {
+			e.connectrpcServer.BroadcastTelemetry(ev)
+		}
+	case "power_profile_state":
+		var ev power.PowerProfileState
+		if json.Unmarshal(req.Data, &ev) == nil {
+			e.connectrpcServer.BroadcastPowerProfile(ev)
+		}
+	}
+
 	e.logger.Info("Successfully processed local trigger request", "type", req.Type, "client_count", e.pool.Size())
 
 	e.writeUDSResponse(conn, UDSResponse{

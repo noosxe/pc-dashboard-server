@@ -10,19 +10,22 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // Server coordinates HTTP listeners and handles Gorilla upgrades.
 type Server struct {
-	logger *slog.Logger
-	server *http.Server
-	pool   *ConnectionPool
-	host   string
-	port   int
+	logger             *slog.Logger
+	server             *http.Server
+	pool               *ConnectionPool
+	host               string
+	port               int
+	registerConnectRPC func(mux *http.ServeMux)
 }
 
 // NewServer initializes a strictly localized loopback WebSocket server.
-func NewServer(host string, port int, pool *ConnectionPool, logger *slog.Logger) *Server {
+func NewServer(host string, port int, pool *ConnectionPool, registerConnectRPC func(mux *http.ServeMux), logger *slog.Logger) *Server {
 	// Security: Enforce strict local binding boundary.
 	if host != "127.0.0.1" && host != "::1" && host != "localhost" {
 		logger.Warn("Requested bind address overridden to loopback for safety", "requested_host", host, "fallback_host", "127.0.0.1")
@@ -32,10 +35,11 @@ func NewServer(host string, port int, pool *ConnectionPool, logger *slog.Logger)
 		port = 12345
 	}
 	return &Server{
-		logger: logger,
-		host:   host,
-		port:   port,
-		pool:   pool,
+		logger:             logger,
+		host:               host,
+		port:               port,
+		pool:               pool,
+		registerConnectRPC: registerConnectRPC,
 	}
 }
 
@@ -61,10 +65,18 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.pool.HandleClient(conn)
 	})
 
+	// Register ConnectRPC services on ServeMux if callback is defined
+	var handler http.Handler = mux
+	if s.registerConnectRPC != nil {
+		s.registerConnectRPC(mux)
+		// Enforce HTTP/2 cleartext (h2c) wrapping for ConnectRPC streaming route safety
+		handler = h2c.NewHandler(mux, &http2.Server{})
+	}
+
 	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
 	s.server = &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: handler,
 		// Enforce standard timeouts to protect against connection exhaustion.
 		ReadHeaderTimeout: 3 * time.Second,
 		IdleTimeout:       30 * time.Second,
@@ -73,7 +85,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Run listener asynchronously
 	errChan := make(chan error, 1)
 	go func() {
-		s.logger.Info("Listening strictly", "url", "ws://"+addr+"/ws")
+		s.logger.Info("Listening strictly", "url", "http://"+addr)
 		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
 		}
