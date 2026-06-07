@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package pcd.v1;
+
+option go_package = "github.com/noosxe/pc-dashboard-server/pkg/api/pcd/v1;pcdv1";
+
+message SessionLockEvent {
+  bool locked = 1;
+}
+
+message DpmsEvent {
+  string state = 1; // "on", "off"
+}
+
+message PowerProfile {
+  string profile = 1;
+}
+
+message PowerProfileState {
+  string active_profile = 1;
+  repeated PowerProfile available_profiles = 2;
+}
+
+message StreamSystemStateRequest {}
+
+message StreamSystemStateResponse {
+  int64 timestamp = 1;
+  oneof event {
+    SessionLockEvent session_lock = 2;
+    DpmsEvent dpms_state = 3;
+    PowerProfileState power_profile_state = 4;
+  }
+}
+
+message ExecuteSystemActionRequest {
+  string command = 1; // e.g. "suspend", "disconnect"
+}
+
+message ExecuteSystemActionResponse {
+  bool success = 1;
+}
+
+message SetPowerProfileRequest {
+  string profile = 1;
+}
+
+message SetPowerProfileResponse {
+  bool success = 1;
+}
+
+service SystemService {
+  rpc StreamSystemState(StreamSystemStateRequest) returns (stream StreamSystemStateResponse);
+  rpc ExecuteSystemAction(ExecuteSystemActionRequest) returns (ExecuteSystemActionResponse);
+  rpc SetPowerProfile(SetPowerProfileRequest) returns (SetPowerProfileResponse);
+}

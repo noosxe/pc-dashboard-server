@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package pcd.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/noosxe/pc-dashboard-server/pkg/api/pcd/v1;pcdv1";
+
+message NotificationEvent {
+  uint32 id = 1;
+  string app_name = 2;
+  uint32 replaces_id = 3;
+  string app_icon = 4;
+  bytes app_icon_raw = 5; // Direct binary transfer, no Base64!
+  string summary = 6;
+  string body = 7;
+  repeated string actions = 8;
+  google.protobuf.Struct hints = 9;
+  int32 expire_timeout = 10;
+}
+
+message NotificationRequest {
+  string app_name = 1;
+  uint32 replaces_id = 2;
+  string app_icon = 3;
+  string summary = 4;
+  string body = 5;
+  repeated string actions = 6;
+  google.protobuf.Struct hints = 7;
+  int32 expire_timeout = 8;
+}
+
+message SendNotificationRequest {
+  NotificationRequest notification = 1;
+}
+
+message SendNotificationResponse {
+  uint32 id = 1;
+}
+
+message TriggerNotificationActionRequest {
+  uint32 notification_id = 1;
+  string action_key = 2;
+}
+
+message TriggerNotificationActionResponse {
+  bool success = 1;
+}
+
+message DismissNotificationRequest {
+  uint32 notification_id = 1;
+}
+
+message DismissNotificationResponse {
+  bool success = 1;
+}
+
+message StreamNotificationsRequest {}
+
+message StreamNotificationsResponse {
+  int64 timestamp = 1;
+  NotificationEvent event = 2;
+}
+
+service NotificationService {
+  rpc StreamNotifications(StreamNotificationsRequest) returns (stream StreamNotificationsResponse);
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+  rpc TriggerNotificationAction(TriggerNotificationActionRequest) returns (TriggerNotificationActionResponse);
+  rpc DismissNotification(DismissNotificationRequest) returns (DismissNotificationResponse);
+}

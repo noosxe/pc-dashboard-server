@@ -35,6 +35,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🔋 Power Profiles Control & Sync (D-Bus)**: Real-time discovery, state monitoring, and direct control of host power profiles (e.g. `power-saver`, `balanced`, `performance`) via standard system D-Bus interfaces targeting `power-profiles-daemon`. Includes full input sanitization boundaries validating inbound profile requests against system-supported power options before execution.
 - **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `power`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
+- **🔌 ConnectRPC Plaintext Streaming & Transport**: Standard gRPC and Connect-protocol endpoint implementation running natively over plaintext HTTP/2 cleartext (H2C) on loopback. Shares the WebSocket TCP port (`12345`) to stream telemetry, notifications, MPRIS player updates, and system operations with minimal packet size and zero reflection allocations, supporting raw binary transfers for artwork and system icons.
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
 - **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms, mock MPRIS media controls, and simulated power profile states), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
@@ -415,14 +416,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. 🔌 ConnectRPC Alternative Communication Route 🟡 *[Design Phase]*
-Provide a modular, binary-based gRPC/ConnectRPC streaming communication channel running alongside WebSockets over local ADB port tunnels.
-- **H2C Plaintext Transport**: Multiplexed HTTP/2 streaming over local loopback using HTTP/2 cleartext (H2C) to run without TLS over USB link bridges.
-- **Binary Protobuf Payloads**: Minimizes network usage and CPU marshalling overhead on both the Go daemon and Android client.
-- **Raw Image Support**: Supports transferring notification icons and MPRIS album artwork directly as raw bytes, bypassing Base64 overhead.
-- *Status*: Protocol specifications and service architectures established. Awaiting design review and approval.
-
-### 10. ⚡ Additional Planned Enhancements
+### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 

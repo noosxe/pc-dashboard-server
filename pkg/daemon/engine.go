@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/noosxe/pc-dashboard-server/pkg/adb"
+	pcdv1 "github.com/noosxe/pc-dashboard-server/pkg/api/pcd/v1"
 	"github.com/noosxe/pc-dashboard-server/pkg/config"
+	"github.com/noosxe/pc-dashboard-server/pkg/connectrpc"
 	"github.com/noosxe/pc-dashboard-server/pkg/dpms"
 	"github.com/noosxe/pc-dashboard-server/pkg/lock"
 	"github.com/noosxe/pc-dashboard-server/pkg/metrics"
@@ -73,6 +75,7 @@ type Engine struct {
 	dpmsMgr          dpms.DpmsManager
 	pool             *websocket.ConnectionPool
 	wsServer         *websocket.Server
+	connectrpcServer *connectrpc.Server
 	intervalMu       sync.Mutex
 	interval         time.Duration
 	resetChan        chan time.Duration
@@ -105,7 +108,20 @@ func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, n
 
 	// Wire callbacks into the WebSocket connection pool
 	e.pool = websocket.NewConnectionPool(websocketLogger, e.handleConfigChange, e.handleAction, e.handleNotificationCommand, e.handleMediaCommand, e.handlePowerProfileCommand, e.handleClientConnect)
-	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, websocketLogger)
+
+	// Wire callbacks into ConnectRPC server
+	connectrpcLogger := daemonLogger.With("component", "connectrpc")
+	e.connectrpcServer = connectrpc.NewServer(
+		connectrpcLogger,
+		e.handleConfigChange,
+		e.handleAction,
+		e.handleNotificationCommand,
+		e.handleMediaCommand,
+		e.handlePowerProfileCommand,
+		e.getInitialSystemStates,
+	)
+
+	e.wsServer = websocket.NewServer(cfg.Server.Host, cfg.Server.Port, e.pool, e.connectrpcServer.RegisterHandlers, websocketLogger)
 
 	return e
 }
@@ -223,6 +239,7 @@ func (e *Engine) runNotificationMonitor(ctx context.Context) error {
 				Data:      ev,
 			}
 			e.pool.Broadcast(payload)
+			e.connectrpcServer.BroadcastNotification(ev)
 		}
 	}
 }
@@ -354,6 +371,7 @@ func (e *Engine) runTelemetryLoop(ctx context.Context) {
 
 			// Broadcast payload to all connected clients
 			e.pool.Broadcast(payload)
+			e.connectrpcServer.BroadcastTelemetry(sysMetrics)
 		}
 	}
 }
@@ -468,6 +486,7 @@ func (e *Engine) runMPRISMonitor(ctx context.Context) error {
 				Data:      ev,
 			}
 			e.pool.Broadcast(payload)
+			e.connectrpcServer.BroadcastMediaState(ev)
 		}
 	}
 }
@@ -499,6 +518,7 @@ func (e *Engine) runLockMonitor(ctx context.Context) error {
 				Data:      ev,
 			}
 			e.pool.Broadcast(payload)
+			e.connectrpcServer.BroadcastSystemLock(ev)
 
 			// Dynamically adjust telemetry poll interval to conserve power while locked
 			e.updateIntervalForLockState(ev.Locked)
@@ -533,6 +553,7 @@ func (e *Engine) runDpmsMonitor(ctx context.Context) error {
 				Data:      ev,
 			}
 			e.pool.Broadcast(payload)
+			e.connectrpcServer.BroadcastDpms(ev)
 
 			// Handle companion app screen wake/sleep via ADB
 			if !e.cfg.ADB.NoAppControl {
@@ -691,6 +712,7 @@ func (e *Engine) runPowerProfilesMonitor(ctx context.Context) error {
 				Data:      ev,
 			}
 			e.pool.Broadcast(payload)
+			e.connectrpcServer.BroadcastPowerProfile(ev)
 		}
 	}
 }
@@ -701,4 +723,54 @@ func (e *Engine) handlePowerProfileCommand(profile string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	return e.powerProfilesMgr.SetPowerProfile(ctx, profile)
+}
+
+// getInitialSystemStates maps and retrieves the cached lock, power, and DPMS states for new ConnectRPC client syncs.
+func (e *Engine) getInitialSystemStates() []*pcdv1.StreamSystemStateResponse {
+	var states []*pcdv1.StreamSystemStateResponse
+
+	e.lockStateMu.RLock()
+	lockState := e.lastLockState
+	e.lockStateMu.RUnlock()
+	if lockState != nil {
+		states = append(states, &pcdv1.StreamSystemStateResponse{
+			Timestamp: time.Now().Unix(),
+			Event: &pcdv1.StreamSystemStateResponse_SessionLock{
+				SessionLock: &pcdv1.SessionLockEvent{Locked: lockState.Locked},
+			},
+		})
+	}
+
+	e.powerStateMu.RLock()
+	powerState := e.lastPowerState
+	e.powerStateMu.RUnlock()
+	if powerState != nil {
+		profiles := make([]*pcdv1.PowerProfile, len(powerState.AvailableProfiles))
+		for i, p := range powerState.AvailableProfiles {
+			profiles[i] = &pcdv1.PowerProfile{Profile: p.Profile}
+		}
+		states = append(states, &pcdv1.StreamSystemStateResponse{
+			Timestamp: time.Now().Unix(),
+			Event: &pcdv1.StreamSystemStateResponse_PowerProfileState{
+				PowerProfileState: &pcdv1.PowerProfileState{
+					ActiveProfile:     powerState.ActiveProfile,
+					AvailableProfiles: profiles,
+				},
+			},
+		})
+	}
+
+	e.dpmsStateMu.RLock()
+	dpmsState := e.lastDpmsState
+	e.dpmsStateMu.RUnlock()
+	if dpmsState != nil {
+		states = append(states, &pcdv1.StreamSystemStateResponse{
+			Timestamp: time.Now().Unix(),
+			Event: &pcdv1.StreamSystemStateResponse_DpmsState{
+				DpmsState: &pcdv1.DpmsEvent{State: dpmsState.State},
+			},
+		})
+	}
+
+	return states
 }

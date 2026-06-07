@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package pcd.v1;
+
+option go_package = "github.com/noosxe/pc-dashboard-server/pkg/api/pcd/v1;pcdv1";
+
+message CPUUsage {
+  double usage_percent = 1;
+  double temp_celsius = 2;
+  double power_watts = 3;
+  double tmax_celsius = 4;
+  repeated double cores_usage_percent = 5;
+  double freq_mhz = 6;
+}
+
+message GPUUsage {
+  double usage_percent = 1;
+  double temp_celsius = 2;
+  uint64 vram_used_bytes = 3;
+  uint64 vram_total_bytes = 4;
+  double power_watts = 5;
+  double vram_temp_celsius = 6;
+  double vram_freq_mhz = 7;
+  double tmax_celsius = 8;
+  double freq_mhz = 9;
+}
+
+message RAMUsage {
+  uint64 used_bytes = 1;
+  uint64 total_bytes = 2;
+  double percentage = 3;
+}
+
+message SwapUsage {
+  uint64 used_bytes = 1;
+  uint64 total_bytes = 2;
+  double percentage = 3;
+}
+
+message ZRAMUsage {
+  uint64 orig_data_size_bytes = 1;
+  uint64 compr_data_size_bytes = 2;
+  uint64 mem_used_total_bytes = 3;
+  uint64 total_bytes = 4;
+  double compression_ratio = 5;
+}
+
+message TelemetryFlags {
+  bool cpu_usage_supported = 1;
+  bool cpu_cores_usage_supported = 2;
+  bool cpu_temp_supported = 3;
+  bool cpu_freq_supported = 4;
+  bool cpu_power_supported = 5;
+  bool cpu_temp_tmax_supported = 6;
+  bool ram_supported = 7;
+  bool swap_supported = 8;
+  bool zram_supported = 9;
+  bool gpu_supported = 10;
+  bool gpu_usage_supported = 11;
+  bool gpu_temp_supported = 12;
+  bool gpu_vram_supported = 13;
+  bool gpu_freq_supported = 14;
+  bool gpu_power_supported = 15;
+  bool gpu_vram_temp_supported = 16;
+  bool gpu_vram_freq_supported = 17;
+  bool gpu_temp_tmax_supported = 18;
+  bool osd_supported = 19;
+  bool peripherals_supported = 20;
+  bool package_updates_supported = 21;
+}
+
+message TelemetryPayload {
+  int64 timestamp = 1;
+  CPUUsage cpu = 2;
+  GPUUsage gpu = 3;
+  RAMUsage ram = 4;
+  SwapUsage swap = 5;
+  ZRAMUsage zram = 6;
+  TelemetryFlags flags = 7;
+}
+
+message StreamTelemetryRequest {
+  int32 interval_ms = 1;
+}
+
+message StreamTelemetryResponse {
+  TelemetryPayload payload = 1;
+}
+
+service TelemetryService {
+  rpc StreamTelemetry(StreamTelemetryRequest) returns (stream StreamTelemetryResponse);
+}

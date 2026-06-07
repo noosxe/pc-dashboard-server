@@ -3,6 +3,7 @@ module github.com/noosxe/pc-dashboard-server
 go 1.26.3
 
 require (
+	connectrpc.com/connect v1.20.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/knadh/koanf/parsers/yaml v1.1.0
@@ -12,6 +13,8 @@ require (
 	github.com/knadh/koanf/v2 v2.3.5
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/net v0.55.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -31,5 +34,6 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )
