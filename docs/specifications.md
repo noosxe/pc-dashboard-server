@@ -321,10 +321,16 @@ The PC Dashboard Server operates as a **user-level systemd service** (`systemd -
 *   No elevated root privileges are required to run the service, adhering strictly to the principle of least privilege.
 *   The service launches automatically upon user login or desktop session activation.
 
-#### User Systemd Configuration File
-`~/.config/systemd/user/pc-dashboard.service`
+#### Service Installation
 
-```ini
+First, ensure the user-level systemd configuration directory exists, and then create the service configuration file at `~/.config/systemd/user/pc-dashboard.service`:
+
+```bash
+# Create the user systemd directory if it does not exist
+mkdir -p ~/.config/systemd/user
+
+# Write the service definition file
+cat << 'EOF' > ~/.config/systemd/user/pc-dashboard.service
 [Unit]
 Description=PC Dashboard Server Daemon
 After=network.target adb.service
@@ -339,16 +345,36 @@ Environment=LOG_LEVEL=info
 
 [Install]
 WantedBy=default.target
+EOF
+```
+
+> [!NOTE]
+> Modify `ExecStart` to match your actual binary location (e.g. `%h/go/bin/pc-dashboard-server` if installed via `go install`).
+
+#### Enable User Lingering (Recommended)
+
+To allow the user systemd manager to start at system boot and remain active when you log out, enable user lingering:
+
+```bash
+loginctl enable-linger $USER
 ```
 
 #### Service Management Commands
+
+Manage the service using `systemctl` with the `--user` flag:
+
 ```bash
 # Reload user systemd daemon configs
 systemctl --user daemon-reload
 
-# Enable and start the service
+# Enable the service to start automatically on boot / login
 systemctl --user enable pc-dashboard.service
+
+# Start the service immediately
 systemctl --user start pc-dashboard.service
+
+# Check the active status of the service
+systemctl --user status pc-dashboard.service
 
 # View real-time daemon logs
 journalctl --user -u pc-dashboard.service -f -n 100
