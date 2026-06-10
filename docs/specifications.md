@@ -291,7 +291,11 @@ Settings are resolved in the following order of precedence (highest to lowest):
     *   `--log-level`: Set structured logging level (`debug`, `info`, `warn`, `error`). Default is `info`.
     *   `--log-format`: Set structured log output format (`text`, `json`). Default is `text`.
 2.  **Environment Variables**: Prefixed with `PCD_` (e.g., `PCD_SERVER_PORT`, `PCD_DAEMON_LOG_LEVEL`, `PCD_DAEMON_LOG_FORMAT`).
-3.  **Local Configuration File**: An optional YAML file located at `~/.config/pc-dashboard/config.yaml`.
+3.  **Local Configuration File**: An optional configuration file loaded dynamically from a predefined location. If no explicit path is passed via command-line flags, the daemon automatically probes for configuration files in the following order:
+    *   `~/.config/pc-dashboard/config.yaml` (parsed as YAML)
+    *   `~/.config/pc-dashboard/config.yml` (parsed as YAML)
+    *   `~/.config/pc-dashboard/config.toml` (parsed as TOML)
+    When a file is loaded, the parser is automatically selected based on the file extension (`.yaml` or `.yml` triggers the YAML parser; `.toml` triggers the TOML parser).
 4.  **Internal Defaults**: Safe fallback values compiled directly into the binary.
 
 #### B. Configuration Schema (YAML Example)
@@ -311,6 +315,25 @@ adb:
   target_package: "com.noosxe.pc_dashboard"
   target_activity: "com.noosxe.pc_dashboard.MainActivity"
   no_app_control: false
+```
+
+#### C. Configuration Schema (TOML Example)
+```toml
+[server]
+host = "127.0.0.1"
+port = 12345
+
+[daemon]
+update_interval_ms = 1000
+log_level = "info"
+log_format = "text"
+
+[adb]
+server_host = "127.0.0.1"
+server_port = 5037
+target_package = "com.noosxe.pc_dashboard"
+target_activity = "com.noosxe.pc_dashboard.MainActivity"
+no_app_control = false
 ```
 
 ---
