@@ -186,10 +186,10 @@ The server merges configurations dynamically from the following sources (ordered
 
 1. **CLI Flags** (e.g. `--port 12345`)
 2. **Environment Variables** prefixed with `PCD_`
-3. **YAML Configuration File** located at `~/.config/pc-dashboard/config.yaml`
+3. **Local Configuration File**: Probed and loaded in order from `~/.config/pc-dashboard/config.yaml` (YAML), `config.yml` (YAML), or `config.toml` (TOML).
 4. **Internal Default Settings**
 
-#### Local Configuration File (`config.yaml`)
+#### Local YAML Configuration File (`config.yaml`)
 
 Create a custom YAML file to define persistent properties:
 
@@ -221,6 +221,40 @@ modules:
   osd: true                  # Toggle OSD volume & lock key status alerts
   peripherals: true          # Toggle keyboard & mouse battery tracking
   package_updates: true      # Toggle package manager updates checking
+```
+
+#### Local TOML Configuration File (`config.toml`)
+
+Alternatively, create a custom TOML file to define persistent properties:
+
+```toml
+[server]
+host = "127.0.0.1"          # Strict loopback binding (strongly recommended)
+port = 12345                # WebSocket server listening port
+
+[daemon]
+update_interval_ms = 1000   # Polling frequency for host statistics
+log_level = "info"          # Logger level (debug, info, warn, error)
+log_format = "text"         # Output style (text or json)
+
+[adb]
+server_host = "127.0.0.1"   # Host address of your local ADB daemon
+server_port = 5037          # Port of your local ADB daemon
+target_package = "com.noosxe.pc_dashboard"
+target_activity = "com.noosxe.pc_dashboard.MainActivity"
+no_app_control = false      # Prevents launching or closing the companion Android app
+
+[modules]
+metrics = true              # Toggle host metrics telemetry collection
+adb = true                  # Toggle ADB device connection tracking
+mpris = true                # Toggle MPRIS media player remote controls
+notifications = true        # Toggle D-Bus notifications forwarding
+lock = true                 # Toggle session lock/unlock monitoring
+power_profiles = true       # Toggle power profile control loop
+bluetooth = true            # Toggle BlueZ Bluetooth device monitoring
+osd = true                  # Toggle OSD volume & lock key status alerts
+peripherals = true          # Toggle keyboard & mouse battery tracking
+package_updates = true      # Toggle package manager updates checking
 ```
 
 #### Environment Variables
@@ -434,7 +468,11 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. ⚡ Additional Planned Enhancements
+### 9. ⚙️ TOML Configuration File Support 🟡 *[Design Phase]*
+Support reading application configurations in TOML format from `~/.config/pc-dashboard/config.toml` in addition to the standard YAML format, dynamically detecting the parser based on the file extension.
+- *Status*: Design established. Awaiting design review and approval.
+
+### 10. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
