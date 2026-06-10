@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/knadh/koanf/parsers/toml"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
@@ -62,13 +63,29 @@ func LoadConfig(configPath string, cliFlags map[string]interface{}) (*Config, er
 	if configPath == "" {
 		homeDir, err := os.UserHomeDir()
 		if err == nil {
-			configPath = filepath.Join(homeDir, ".config", "pc-dashboard", "config.yaml")
+			candidates := []string{
+				filepath.Join(homeDir, ".config", "pc-dashboard", "config.yaml"),
+				filepath.Join(homeDir, ".config", "pc-dashboard", "config.yml"),
+				filepath.Join(homeDir, ".config", "pc-dashboard", "config.toml"),
+			}
+			for _, candidate := range candidates {
+				if _, err := os.Stat(candidate); err == nil {
+					configPath = candidate
+					break
+				}
+			}
 		}
 	}
 
 	if configPath != "" {
 		if _, err := os.Stat(configPath); err == nil {
-			if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+			var parser koanf.Parser
+			if strings.HasSuffix(configPath, ".toml") {
+				parser = toml.Parser()
+			} else {
+				parser = yaml.Parser()
+			}
+			if err := k.Load(file.Provider(configPath), parser); err != nil {
 				return nil, fmt.Errorf("failed to load config file %s: %w", configPath, err)
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
