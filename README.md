@@ -36,7 +36,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🔌 Local UDS Command Trigger Socket**: Connects directly to the active background server daemon via a secure local Unix Domain Socket (UDS) using standard CLI subcommands (`lock`, `unlock`, `notification`, `media`, `telemetry`, `power`, `raw`). Relays mock telemetry, locks, MPRIS media updates, and arbitrary custom JSON payloads down the WebSocket stream to connected companion app clients with instant execution feedback.
 - **🛡️ Secure Loopback Isolation**: The high-performance WebSocket server binds exclusively to the local loopback address (`127.0.0.1:12345`), exposing zero network ports to the outside world.
 - **🔌 ConnectRPC Plaintext Streaming & Transport**: Standard gRPC and Connect-protocol endpoint implementation running natively over plaintext HTTP/2 cleartext (H2C) on loopback. Shares the WebSocket TCP port (`12345`) to stream telemetry, notifications, MPRIS player updates, and system operations with minimal packet size and zero reflection allocations, supporting raw binary transfers for artwork and system icons.
-- **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML config files, environment variables, and CLI overrides.
+- **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML or TOML config files, environment variables, and CLI overrides.
 - **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms, mock MPRIS media controls, and simulated power profile states), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
 
@@ -468,11 +468,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. ⚙️ TOML Configuration File Support 🟡 *[Design Phase]*
-Support reading application configurations in TOML format from `~/.config/pc-dashboard/config.toml` in addition to the standard YAML format, dynamically detecting the parser based on the file extension.
-- *Status*: Design established. Awaiting design review and approval.
-
-### 10. ⚡ Additional Planned Enhancements
+### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
