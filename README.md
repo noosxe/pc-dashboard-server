@@ -321,9 +321,16 @@ The daemon pushes structured telemetry payloads every second to all connected We
 
 To run the server continuously in the background within your desktop user space (safe and recommended as it requires zero root privileges), configure it as a **Systemd User Service**.
 
-1. Create a service configuration file under `~/.config/systemd/user/pc-dashboard.service`:
+### 1. Install the Service File
 
-```ini
+First, ensure the user-level systemd configuration directory exists, and then create the service configuration file at `~/.config/systemd/user/pc-dashboard.service`:
+
+```bash
+# Create the user systemd directory if it does not exist
+mkdir -p ~/.config/systemd/user
+
+# Write the service definition file
+cat << 'EOF' > ~/.config/systemd/user/pc-dashboard.service
 [Unit]
 Description=PC Dashboard Server Daemon
 After=network.target adb.service
@@ -337,27 +344,38 @@ RestartSec=3s
 
 [Install]
 WantedBy=default.target
+EOF
 ```
 
 > [!NOTE]
-> If you built from source or placed the binary in a different folder, modify `ExecStart` to point to the correct absolute binary location (e.g. `/usr/local/bin/pc-dashboard-server`).
+> The default configuration assumes the binary was installed via `go install` (placed in `~/go/bin/`). If you built from source or moved the binary elsewhere, modify the `ExecStart` line to point to your absolute binary path (e.g., `/usr/local/bin/pc-dashboard-server`).
 
-2. Control the daemon using user systemctl directives:
+### 2. Enable User Lingering (Recommended)
+
+By default, user-level systemd services only start when the user logs in and are terminated when the user logs out. To allow the service to start automatically on system boot and continue running in the background when you are logged out, enable user lingering:
 
 ```bash
-# Reload configurations
+loginctl enable-linger $USER
+```
+
+### 3. Control the Daemon
+
+Manage the service using `systemctl` with the `--user` flag:
+
+```bash
+# Reload the systemd manager configuration
 systemctl --user daemon-reload
 
-# Enable automatic start upon user login
+# Enable the service to start automatically on boot / login
 systemctl --user enable pc-dashboard.service
 
 # Start the service immediately
 systemctl --user start pc-dashboard.service
 
-# Check service status
+# Check the active status of the service
 systemctl --user status pc-dashboard.service
 
-# Tail logs in real-time
+# View real-time daemon logs
 journalctl --user -u pc-dashboard.service -f -n 100
 ```
 
