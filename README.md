@@ -154,19 +154,77 @@ pc-dashboard-server start --emulate-metrics --mock-adb --verbose
 
 #### Trigger Subcommands
 
-The `trigger` command supports several event category subcommands with dedicated parameters:
+The `trigger` command connects to the active background daemon via a local Unix socket to trigger simulated events down the WebSocket stream. It supports several event category subcommands:
 
 *   `lock` / `unlock`: Simulates screen locking/unlocking.
-*   `notification`: Dispatches standard mock desktop notifications. Supporting flags: `--summary`, `--body`, `--app-name`, `--icon`, `--timeout`.
-*   `media`: Dispatches player updates. Supporting flags: `--player`, `--status` (Playing/Paused), `--title`, `--artist`, `--volume`, `--position`, `--length`.
-*   `telemetry`: Dispatches metrics reports. Supporting flags: `--cpu-usage`, `--cpu-temp`, `--ram-used`, `--ram-total`, `--gpu-usage`, `--gpu-temp`.
-*   `power`: Dispatches power profile state updates. Supporting flags: `--active`, `--available` (comma-separated list).
-*   `raw`: Dispatches arbitrary passthrough payloads. Supporting flags: `--type` (`-t`), `--data` (`-d`) carrying valid JSON.
+*   `dpms`: Simulates display power management state transitions.
+    *   `--state`: The display power state, either `on` or `off` (default `"off"`).
+*   `notification`: Dispatches mock desktop notifications.
+    *   `--app-name`: Name of the triggering application (default `"pc-dashboard"`).
+    *   `--replaces-id`: The notification ID to replace/update (default `0`).
+    *   `--icon`: The icon name or filepath (default `"dialog-information"`).
+    *   `--summary`: The notification title summary (default `"Alert"`).
+    *   `--body`: The detailed notification body (default `"System trigger action simulated."`).
+    *   `--actions`: Comma-separated list of actions (e.g. `dismiss,Dismiss`).
+    *   `--timeout`: Expire timeout in milliseconds (default `-1`).
+*   `media`: Dispatches MPRIS player updates.
+    *   `--player`: The target media player name (default `"spotify"`).
+    *   `--status`: Playback status, either `Playing`, `Paused`, or `Stopped` (default `"Playing"`).
+    *   `--volume`: Player volume ratio between `0.0` and `1.0` (default `0.75`).
+    *   `--position`: Current track position in microseconds (default `45000000`).
+    *   `--track-id`: Unique metadata track ID/URI (default `"spotify:track:uds-track"`).
+    *   `--title`: Track song title (default `"UDS Trigger Track"`).
+    *   `--artist`: Track artist names (comma-separated, default `"Antigravity,Agent"`).
+    *   `--album`: Track album title (default `"UDS Testing Album"`).
+    *   `--art-url`: Album cover art image URL (default `"https://localhost/art.png"`).
+    *   `--length`: Track duration in microseconds (default `180000000`).
+*   `telemetry`: Dispatches metrics reports and capability flags.
+    *   **Metrics Flags**:
+        *   `--cpu-usage`: Overall CPU usage percentage (default `25.5`).
+        *   `--cpu-cores-usage`: Comma-separated list of individual core usage percentages (default `"10.0,20.0,30.0,40.0"`).
+        *   `--cpu-temp`: Overall CPU package temperature in Celsius (default `45.0`).
+        *   `--cpu-freq`: CPU active scaling frequency in MHz (default `2500.0`).
+        *   `--cpu-power`: CPU package power consumption in Watts (default `35.0`).
+        *   `--ram-used`: System RAM bytes used (default `8589934592` / 8GB).
+        *   `--ram-total`: Total system RAM capacity in bytes (default `17179869184` / 16GB).
+        *   `--ram-percentage`: Specific RAM usage percentage (if `0`, calculated dynamically).
+        *   `--gpu-usage`: Overall GPU usage percentage (default `15.0`).
+        *   `--gpu-temp`: Overall GPU temperature in Celsius (default `50.0`).
+        *   `--gpu-freq`: GPU engine clock speed in MHz (default `1200.0`).
+        *   `--gpu-power`: GPU active power consumption in Watts (default `75.0`).
+        *   `--gpu-mem-used`: GPU VRAM bytes used (default `2147483648` / 2GB).
+        *   `--gpu-mem-total`: Total GPU VRAM capacity in bytes (default `8589934592` / 8GB).
+        *   `--gpu-vram-temp`: GPU VRAM temperature in Celsius (default `55.0`).
+        *   `--gpu-vram-freq`: GPU VRAM clock speed in MHz (default `1500.0`).
+    *   **Telemetry Support / Capability Flags (default `true`)**:
+        *   `--cpu-usage-supported`: CPU usage support flag.
+        *   `--cpu-cores-usage-supported`: CPU core usage support flag.
+        *   `--cpu-temp-supported`: CPU temperature support flag.
+        *   `--cpu-freq-supported`: CPU frequency support flag.
+        *   `--cpu-power-supported`: CPU power support flag.
+        *   `--ram-supported`: RAM metrics support flag.
+        *   `--gpu-supported`: GPU metrics support flag.
+        *   `--gpu-usage-supported`: GPU usage support flag.
+        *   `--gpu-temp-supported`: GPU temperature support flag.
+        *   `--gpu-vram-supported`: GPU VRAM stats support flag.
+        *   `--gpu-freq-supported`: GPU frequency support flag.
+        *   `--gpu-power-supported`: GPU power draw support flag.
+        *   `--gpu-vram-temp-supported`: GPU VRAM temperature support flag.
+        *   `--gpu-vram-freq-supported`: GPU VRAM frequency support flag.
+*   `power`: Dispatches power profile state updates.
+    *   `--active`: The active power profile (default `"balanced"`).
+    *   `--available`: Comma-separated list of available power profiles (default `"power-saver,balanced,performance"`).
+*   `raw`: Dispatches arbitrary passthrough payloads.
+    *   `--type` / `-t`: Custom type wrapper name (required).
+    *   `--data` / `-d`: Valid JSON string payload to broadcast (required).
 
 *Examples:*
 ```bash
 # Trigger a session lock screen
 pc-dashboard-server trigger lock
+
+# Trigger a display power off event
+pc-dashboard-server trigger dpms --state off
 
 # Trigger a custom notification toast
 pc-dashboard-server trigger notification --summary "Antigravity Alert" --body "Everything is operating correctly"
