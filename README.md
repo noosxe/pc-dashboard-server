@@ -8,7 +8,7 @@ A Go-based server designed for system monitoring, metrics collection, and dashbo
 
 ## 🚀 Overview
 
-**PC Dashboard Server** is a lightweight, low-overhead system daemon written in Go for Linux host systems. It works in tandem with a companion Android application ([com.noosxe.pc_dashboard](https://github.com/noosxe/pc-dashboard-app)) to transform any Android mobile device connected via USB into a dedicated, real-time hardware status monitor and dashboard.
+**PC Dashboard Server** is a lightweight, low-overhead system daemon written in Go for Linux host systems. It works in tandem with a companion Android application ([com.noosxe.pc_dashboard](https://github.com/noosxe/pc-dashboard)) to transform any Android mobile device connected via USB into a dedicated, real-time hardware status monitor and dashboard.
 
 By using physical USB connections instead of local Wi-Fi networks, the system achieves sub-millisecond network latencies, eliminates wireless bandwidth contention, runs securely inside local host loops, and is completely isolated from external network eavesdropping or packet injection.
 
