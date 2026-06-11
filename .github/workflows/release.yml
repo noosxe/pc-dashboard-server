@@ -54,17 +54,18 @@ jobs:
 
       - name: Build Release Binary
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -ldflags="-s -w" -o pc-dashboard-server-linux-amd64 main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -ldflags="-s -w" -o pc-dashboard-server main.go
+          tar -czvf pc-dashboard-server-linux-amd64.tar.gz pc-dashboard-server
 
       - name: Generate Artifact Attestation
         uses: actions/attest@v2
         with:
-          subject-path: pc-dashboard-server-linux-amd64
+          subject-path: pc-dashboard-server-linux-amd64.tar.gz
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: pc-dashboard-server-linux-amd64
+          files: pc-dashboard-server-linux-amd64.tar.gz
           draft: false
           prerelease: false
           generate_release_notes: true
