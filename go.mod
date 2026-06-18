@@ -14,7 +14,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.5
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.56.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -36,6 +36,6 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 )
