@@ -674,6 +674,29 @@ Upon receiving a valid `launch_app_command`:
 3. The engine asynchronously spawns the process using Go's `os/exec` library (`exec.Command(app.Exec, app.Args...)` and calling `cmd.Start()`).
 4. To prevent blocking the telemetry and server loops, the process is spawned in the background. The engine monitors starting success/failure, returning an error response if the command fails to start (e.g. file not found).
 5. The spawned process inherits the running server daemon's environment context. Because the daemon runs as a user systemd service, it shares the graphical display environment (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`), allowing desktop GUI apps to initialize seamlessly in the active session.
+---
+
+### 3.15. Nix Flake & NixOS Integration
+The PC Dashboard Server repository supports the Nix packaging ecosystem to provide reproducible developer shells and easy service installation workflows on NixOS configurations.
+
+#### A. Nix Flake Configuration
+The project defines a standard `flake.nix` file exposing the following outputs:
+1. **Packages (`packages.<system>.pc-dashboard-server`)**: Builds the Go application from source using Nixpkgs' `buildGoModule`. Configured with CGO disabled (`CGO_ENABLED = 0`) to ensure a pure Go binary that depends only on runtime Linux API interfaces (sysfs, procfs, D-Bus sockets, and ADB loopback).
+2. **Default Package (`packages.<system>.default`)**: Points to the `pc-dashboard-server` package.
+3. **Development Shells (`devShells.<system>.default`)**: Provides a reproducible shell environment preloaded with the specific Go compiler version and tools (`gopls`, `gotools`, `go-tools`) to bootstrap local development.
+4. **NixOS Modules (`nixosModules.pc-dashboard-server` / `nixosModules.default`)**: Exposes configuration structures enabling integration into NixOS profiles.
+
+#### B. NixOS Module & Service Definition
+The NixOS module integrates the daemon as a systemd user service. Since the daemon must communicate with the user's graphical session (e.g., PulseAudio/PipeWire for volume levels, MPRIS players for media status, and standard desktop notifications), it is declared within systemd's user scope.
+1. **Module Configuration Schema**:
+   * `services.pc-dashboard-server.enable`: Boolean flag to control activation.
+   * `services.pc-dashboard-server.package`: Custom package reference to override the daemon binary.
+   * `services.pc-dashboard-server.port`: Custom integer setting target port parameter.
+   * `services.pc-dashboard-server.logLevel` / `services.pc-dashboard-server.logFormat`: Strict enumerated options setting logging variables.
+   * `services.pc-dashboard-server.emulateMetrics` / `services.pc-dashboard-server.noAppControl`: Boolean parameters passing respective toggles.
+   * `services.pc-dashboard-server.extraFlags`: List of additional string parameters forwarded to the daemon start command.
+2. **Systemd Integration**:
+   When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting.
 
 ---
 
@@ -699,4 +722,5 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 16. **Peripherals Read-Only Limits**: Accessing UPower properties over D-Bus system bus must use strictly read-only calls. Sysfs reads for nominal polling rates (`bInterval`) must validate the path target resides under `/sys/` boundaries, using strict file limit constraints to prevent system leaks.
 17. **Package Updates Read-Only Boundaries**: The package updates tracking engine operates strictly in a query-only mode. It must never request or trigger package installations, removals, or system upgrades. PackageKit transaction queries must be validated for boundaries, ensuring zero elevated privilege escalation risks.
 18. **App Launcher Security Boundaries**: The App Launcher engine must strictly enforce whitelist lookup validation. It is forbidden to parse or execute arbitrary execution commands, shell script wrappers, or parameter arrays received via the WebSocket interface. Spawned processes must be invoked directly using Go's `os/exec` libraries without shells (avoid `sh -c` or `bash -c`), and arguments can only be loaded from the static server configuration file to eliminate command or argument injection vectors.
+19. **NixOS Module Parameter Validation**: The NixOS module configuration parameters must be strictly validated at evaluation time (using Nixpkgs types like `port`, `enum`, and `bool`) to prevent shell argument injections or malformed daemon flags. The systemd service is explicitly executed as a user-level service (`systemd.user.services.pc-dashboard-server`) to adhere to the unprivileged access security guideline.
 

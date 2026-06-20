@@ -525,8 +525,10 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inbound WebSocket Command**: Implements a `launch_app_command` payload containing a valid whitelisted `app_key`.
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
+### 9. ❄️ Nix Flake & NixOS Module 🟡 *[Design Phase]*
+Provide a Nix flake (`flake.nix`) enabling reproducible local development environments and direct NixOS installations, complete with a systemd user service module.
 
-### 9. ⚡ Additional Planned Enhancements
+### 10. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
