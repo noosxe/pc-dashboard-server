@@ -44,6 +44,9 @@
         };
       }
     ) // {
+      overlays.default = final: prev: {
+        pc-dashboard-server = self.packages.${final.system}.pc-dashboard-server;
+      };
       nixosModules.pc-dashboard-server = import ./nixos-module.nix self;
       nixosModules.default = self.nixosModules.pc-dashboard-server;
     };
