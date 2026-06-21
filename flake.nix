@@ -24,7 +24,9 @@
 
           ldflags = [ "-s" "-w" ];
 
-          CGO_ENABLED = 0;
+          env = {
+            CGO_ENABLED = "0";
+          };
 
           meta = with pkgs.lib; {
             description = "A lightweight, low-overhead system daemon for PC Dashboard";
