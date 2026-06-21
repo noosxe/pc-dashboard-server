@@ -688,13 +688,28 @@ The project defines a standard `flake.nix` file exposing the following outputs:
 
 #### B. NixOS Module & Service Definition
 The NixOS module integrates the daemon as a systemd user service. Since the daemon must communicate with the user's graphical session (e.g., PulseAudio/PipeWire for volume levels, MPRIS players for media status, and standard desktop notifications), it is declared within systemd's user scope.
-1. **Module Configuration Schema**:
-   * `services.pc-dashboard-server.enable`: Boolean flag to control activation.
-   * `services.pc-dashboard-server.package`: Custom package reference to override the daemon binary.
-   * `services.pc-dashboard-server.port`: Custom integer setting target port parameter.
-   * `services.pc-dashboard-server.logLevel` / `services.pc-dashboard-server.logFormat`: Strict enumerated options setting logging variables.
-   * `services.pc-dashboard-server.emulateMetrics` / `services.pc-dashboard-server.noAppControl`: Boolean parameters passing respective toggles.
-   * `services.pc-dashboard-server.extraFlags`: List of additional string parameters forwarded to the daemon start command.
+1. **Module Configuration Options**:
+   The module exposes the following structured options nested under `services.pc-dashboard-server`:
+   * `enable` (bool, default: `false`): Enable the PC Dashboard Server daemon.
+   * `package` (package, default: `packages.<system>.default`): The `pc-dashboard-server` package to use.
+   * `host` (string, default: `"127.0.0.1"`): The local interface IP address to bind the WebSocket server to.
+   * `port` (port, default: `12345`): The port the WebSocket server listens on.
+   * `updateIntervalMs` (int, default: `1000`): Frequency of telemetry metrics updates in milliseconds.
+   * `lockedUpdateIntervalMs` (int, default: `5000`): Frequency of telemetry updates when the session is locked.
+   * `logLevel` (enum `[ "debug" "info" "warn" "error" ]`, default: `"info"`): Structured logging level.
+   * `logFormat` (enum `[ "text" "json" ]`, default: `"text"`): Structured log output format.
+   * `socketPath` (nullOr string, default: `null`): Custom path for the control Unix Domain Socket (defaults to `XDG_RUNTIME_DIR/pc-dashboard-server.sock`).
+   * `adb.serverHost` (string, default: `"127.0.0.1"`): ADB server host.
+   * `adb.serverPort` (port, default: `5037`): ADB server port.
+   * `adb.targetPackage` (string, default: `"com.noosxe.pc_dashboard"`): Companion Android app package name.
+   * `adb.targetActivity` (string, default: `"com.noosxe.pc_dashboard.MainActivity"`): Companion Android app launch activity.
+   * `adb.noAppControl` (bool, default: `false`): Prevent the daemon from controlling companion app states (wake screen, start/stop app).
+   * `emulateMetrics` (bool, default: `false`): Enable simulated sine-wave telemetry metrics.
+   * `mockAdb` (bool, default: `false`): Enable simulated ADB device connection ticks.
+   * `mockNotifications` (bool, default: `false`): Enable simulated desktop notifications sync.
+   * `mockLock` (bool, default: `false`): Enable simulated session lock/unlock events.
+   * `mockDpms` (bool, default: `false`): Enable simulated DPMS display power events.
+   * `extraFlags` (listOf string, default: `[]`): Extra command-line arguments to pass directly to the daemon start command.
 2. **Systemd Integration**:
    When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting.
 
