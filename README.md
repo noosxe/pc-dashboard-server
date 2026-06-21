@@ -35,15 +35,15 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 
 To keep this repository clean and easy to navigate, detailed guides and references have been organized into the following documents:
 
-*   **[Installation Guide](file:///workspaces/pc-dashboard-server/docs/installation.md)**: Prerequisites, compiler/source builds, CPU permissions setup, and NixOS package deployment.
-*   **[Usage & Configuration Guide](file:///workspaces/pc-dashboard-server/docs/usage.md)**: Command-line parameters, trigger subcommands, and YAML/TOML/environment configuration schemas.
-*   **[Architecture & API Reference](file:///workspaces/pc-dashboard-server/docs/architecture.md)**: Data flows, WebSocket JSON protocol messages, and standard systemd user daemon setups.
-*   **[Technical Specifications](file:///workspaces/pc-dashboard-server/docs/specifications.md)**: Core functional requirements, sensors path mappings, and security policies.
-*   **[Design Document](file:///workspaces/pc-dashboard-server/docs/design_document.md)**: Code architecture layout, package boundaries, and interface definitions.
-*   **[Protocol Specification](file:///workspaces/pc-dashboard-server/docs/protocol_specification.md)**: ADB TCP length-prefixed protocol frames and custom JSON structures.
-*   **[ConnectRPC Specification](file:///workspaces/pc-dashboard-server/docs/connectrpc_specification.md)**: Plaintext HTTP/2 Connect-protocol endpoint references and streaming schemas.
-*   **[Testing & Emulation Guide](file:///workspaces/pc-dashboard-server/docs/testing_and_emulation.md)**: Metrics simulation formulas, mock ADB connection cycles, and testing mock environments.
-*   **[Agent Developer Guide](file:///workspaces/pc-dashboard-server/AGENTS.md)**: Git branch structures, commit regulations, and feature lifecycle workflows.
+*   **[Installation Guide](docs/installation.md)**: Prerequisites, compiler/source builds, CPU permissions setup, and NixOS package deployment.
+*   **[Usage & Configuration Guide](docs/usage.md)**: Command-line parameters, trigger subcommands, and YAML/TOML/environment configuration schemas.
+*   **[Architecture & API Reference](docs/architecture.md)**: Data flows, WebSocket JSON protocol messages, and standard systemd user daemon setups.
+*   **[Technical Specifications](docs/specifications.md)**: Core functional requirements, sensors path mappings, and security policies.
+*   **[Design Document](docs/design_document.md)**: Code architecture layout, package boundaries, and interface definitions.
+*   **[Protocol Specification](docs/protocol_specification.md)**: ADB TCP length-prefixed protocol frames and custom JSON structures.
+*   **[ConnectRPC Specification](docs/connectrpc_specification.md)**: Plaintext HTTP/2 Connect-protocol endpoint references and streaming schemas.
+*   **[Testing & Emulation Guide](docs/testing_and_emulation.md)**: Metrics simulation formulas, mock ADB connection cycles, and testing mock environments.
+*   **[Agent Developer Guide](AGENTS.md)**: Git branch structures, commit regulations, and feature lifecycle workflows.
 
 ---
 
