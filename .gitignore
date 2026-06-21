@@ -26,3 +26,4 @@ config.yaml
 # Nix build outputs
 result
 result-*
+/.direnv
