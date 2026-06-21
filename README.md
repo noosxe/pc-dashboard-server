@@ -526,7 +526,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 ### 9. ❄️ Nix Flake & NixOS Module 🟡 *[Design Phase]*
-Provide a Nix flake (`flake.nix`) enabling reproducible local development environments and direct NixOS installations, complete with a systemd user service module.
+Provide a Nix flake (`flake.nix`) enabling reproducible local development environments and direct NixOS installations, complete with a systemd user service module. Requires updating the README with proper Nix installation instructions, including how to configure and run the system-wide ADB server on NixOS.
 
 ### 10. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
