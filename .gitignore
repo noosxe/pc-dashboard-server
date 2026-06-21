@@ -22,3 +22,7 @@ pc-dashboard-server
 
 # Local configuration overrides
 config.yaml
+
+# Nix build outputs
+result
+result-*

@@ -18,9 +18,7 @@
 
           src = ./.;
 
-          # Initial placeholder hash. Users should replace this with the actual computed hash
-          # output by Nix on the first build attempt.
-          vendorHash = pkgs.lib.fakeHash;
+          vendorHash = "sha256-LEGWfzj7o+pXPv2fzZP4j83866UTIAursMbOpgOk4rE=";
 
           ldflags = [ "-s" "-w" ];
 
