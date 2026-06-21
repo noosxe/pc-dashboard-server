@@ -89,7 +89,7 @@ users.users.<your-username>.extraGroups = [ "adbusers" ];
 
 ### B. Adding the Flake & Configuring the Service
 
-You can import this repository as a flake input and enable the module in your NixOS configuration:
+You can import this repository as a flake input, add its default overlay, and enable the module in your NixOS configuration:
 
 ```nix
 # flake.nix
@@ -111,12 +111,15 @@ You can import this repository as a flake input and enable the module in your Ni
         # Import the module exposed by the flake
         pc-dashboard-server.nixosModules.default
         
-        # Configure and enable the daemon
+        # Configure the overlay and enable the daemon
         ({ pkgs, ... }: {
+          nixpkgs.overlays = [
+            pc-dashboard-server.overlays.default
+          ];
+
           services.pc-dashboard-server = {
             enable = true;
-            # Override package (optional, defaults to flake's built package)
-            package = pc-dashboard-server.packages.${pkgs.system}.default;
+            # Package default automatically resolves to overlay's pkgs.pc-dashboard-server
             port = 12345;
             logLevel = "info";
             # Optional: Enable metrics emulation or mock states

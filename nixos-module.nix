@@ -44,8 +44,8 @@ in
 
     package = mkOption {
       type = types.package;
-      default = self.packages.${pkgs.system}.default;
-      defaultText = literalExpression "self.packages.\${pkgs.system}.default";
+      default = pkgs.pc-dashboard-server or self.packages.${pkgs.system}.default;
+      defaultText = literalExpression "pkgs.pc-dashboard-server or self.packages.\${pkgs.system}.default";
       description = "The pc-dashboard-server package to use.";
     };
 
