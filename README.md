@@ -39,6 +39,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **⚙️ Dynamic Configuration Management**: Integrated with `koanf` to support hierarchical merging of internal defaults, YAML or TOML config files, environment variables, and CLI overrides.
 - **📊 Swappable Emulation Layer**: Full support for `--emulate-metrics` (smooth wave algorithms, mock MPRIS media controls, and simulated power profile states), `--mock-adb` (simulated connection ticks), `--mock-notifications` (simulated desktop notifications), and `--mock-lock` (simulated session lock events) to develop and test inside container environments or on macOS/Windows without physical hardware or device setup.
 - **📝 Structured Logging**: Fully controllable structured logs using Go's native `log/slog` in both Text and JSON formats.
+- **❄️ Nix Flake & NixOS Module**: Provides a unified `flake.nix` exposing Go package compilation outputs, reproducible local development shells, and a NixOS module that runs the daemon as a unprivileged systemd user service.
 
 ---
 
@@ -102,6 +103,68 @@ cd pc-dashboard-server
 
 # Build the executable
 go build -o pc-dashboard-server main.go
+```
+
+### 3. Nix Flake & NixOS Installation
+
+If you are running NixOS or using the Nix package manager, you can use the provided Nix flake to install the daemon or configure it system-wide as a systemd user service.
+
+#### A. NixOS Module Prerequisites (ADB Setup)
+
+The server daemon runs as a user-level service and communicates with ADB via TCP port `5037`. You must enable the ADB server system-wide on your NixOS host and assign your user to the `adbusers` group to allow physical USB port access:
+
+```nix
+# In your /etc/nixos/configuration.nix:
+programs.adb.enable = true;
+
+users.users.<your-username>.extraGroups = [ "adbusers" ];
+```
+
+#### B. Adding the Flake & Configuring the Service
+
+You can import this repository as a flake input and enable the module in your NixOS configuration:
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    
+    pc-dashboard-server = {
+      url = "github:noosxe/pc-dashboard-server";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { nixpkgs, pc-dashboard-server, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      modules = [
+        ./configuration.nix
+        
+        # Import the module exposed by the flake
+        pc-dashboard-server.nixosModules.default
+        
+        # Configure and enable the daemon
+        ({ pkgs, ... }: {
+          services.pc-dashboard-server = {
+            enable = true;
+            # Override package (optional, defaults to flake's built package)
+            package = pc-dashboard-server.packages.${pkgs.system}.default;
+            port = 12345;
+            logLevel = "info";
+            # Optional: Enable metrics emulation or mock states
+            emulateMetrics = false; 
+          };
+        })
+      ];
+    };
+  };
+}
+```
+
+Once applied, the systemd user service `pc-dashboard-server` will start automatically in your graphical session. You can manage it with:
+```bash
+systemctl --user status pc-dashboard-server
 ```
 
 ---
@@ -525,10 +588,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inbound WebSocket Command**: Implements a `launch_app_command` payload containing a valid whitelisted `app_key`.
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
-### 9. ❄️ Nix Flake & NixOS Module 🟡 *[Design Phase]*
-Provide a Nix flake (`flake.nix`) enabling reproducible local development environments and direct NixOS installations, complete with a systemd user service module. Requires updating the README with proper Nix installation instructions, including how to configure and run the system-wide ADB server on NixOS.
-
-### 10. ⚡ Additional Planned Enhancements
+### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
