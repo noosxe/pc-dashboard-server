@@ -153,6 +153,12 @@ in
       description = "Enable simulated DPMS display power events.";
     };
 
+    enableCpuPowerMetrics = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Configure system-wide udev rules to make RAPL energy files readable by standard users (mode 0444), enabling CPU power telemetry for the non-root daemon service.";
+    };
+
     extraFlags = mkOption {
       type = types.listOf types.str;
       default = [];
@@ -173,5 +179,9 @@ in
         RestartSec = "3s";
       };
     };
+
+    services.udev.extraRules = mkIf cfg.enableCpuPowerMetrics ''
+      SUBSYSTEM=="powercap", ACTION=="add|change", KERNEL=="intel-rapl:*", RUN+="${pkgs.coreutils}/bin/chmod 0444 /sys/%p/energy_uj"
+    '';
   };
 }
