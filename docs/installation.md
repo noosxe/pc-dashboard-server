@@ -124,6 +124,8 @@ You can import this repository as a flake input, add its default overlay, and en
             logLevel = "info";
             # Optional: Enable metrics emulation or mock states
             emulateMetrics = false; 
+            # Optional: Enable udev rules for CPU RAPL energy (power_watts telemetry)
+            enableCpuPowerMetrics = true;
           };
         })
       ];
