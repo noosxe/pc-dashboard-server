@@ -87,6 +87,8 @@ programs.adb.enable = true;
 users.users.<your-username>.extraGroups = [ "adbusers" ];
 ```
 
+By default, the daemon's NixOS module will automatically start the local ADB server daemon before launching (`services.pc-dashboard-server.adb.autoStartServer = true`). This spawns the ADB server under your unprivileged user session context (inheriting access to your local keys at `~/.android/` for device authentication) so the server is ready out-of-the-box. If you configure a remote ADB server or manage its lifecycle manually, you can set `autoStartServer = false;`.
+
 ### B. Adding the Flake & Configuring the Service
 
 You can import this repository as a flake input, add its default overlay, and enable the module in your NixOS configuration:
