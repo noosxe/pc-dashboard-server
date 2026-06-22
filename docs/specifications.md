@@ -712,7 +712,7 @@ The NixOS module integrates the daemon as a systemd user service. Since the daem
    * `mockDpms` (bool, default: `false`): Enable simulated DPMS display power events.
    * `extraFlags` (listOf string, default: `[]`): Extra command-line arguments to pass directly to the daemon start command.
 2. **Systemd Integration**:
-   When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting. Additionally, the module automatically propagates `config.hardware.nvidia.package` to the service's `path` list if `config.hardware.nvidia.enable` is active, ensuring `nvidia-smi` is available in the daemon environment.
+   When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting. Additionally, the module automatically propagates `config.hardware.nvidia.package` to the service's `path` list if `config.services.xserver.videoDrivers` contains `"nvidia"`, ensuring `nvidia-smi` is available in the daemon environment.
 
 ---
 
