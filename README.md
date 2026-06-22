@@ -100,6 +100,11 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
+### 10. ❄️ NixOS NVIDIA GPU Path Propagation 🟡 *[Design Phase]*
+Automatically propagate the host's NVIDIA driver package into the systemd user service PATH on NixOS systems.
+- **Mechanisms**: Dynamically query `config.hardware.nvidia.enable`. If enabled, append `config.hardware.nvidia.package` to the `path` list of the `systemd.user.services.pc-dashboard-server` unit.
+- **Benefits**: Resolves "command not found" errors when executing `nvidia-smi` inside systemd user service contexts without requiring manual user path overrides.
+
 ### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.

@@ -712,7 +712,7 @@ The NixOS module integrates the daemon as a systemd user service. Since the daem
    * `mockDpms` (bool, default: `false`): Enable simulated DPMS display power events.
    * `extraFlags` (listOf string, default: `[]`): Extra command-line arguments to pass directly to the daemon start command.
 2. **Systemd Integration**:
-   When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting.
+   When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting. Additionally, the module automatically propagates `config.hardware.nvidia.package` to the service's `path` list if `config.hardware.nvidia.enable` is active, ensuring `nvidia-smi` is available in the daemon environment.
 
 ---
 
@@ -740,4 +740,5 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 18. **App Launcher Security Boundaries**: The App Launcher engine must strictly enforce whitelist lookup validation. It is forbidden to parse or execute arbitrary execution commands, shell script wrappers, or parameter arrays received via the WebSocket interface. Spawned processes must be invoked directly using Go's `os/exec` libraries without shells (avoid `sh -c` or `bash -c`), and arguments can only be loaded from the static server configuration file to eliminate command or argument injection vectors.
 19. **NixOS Module Parameter Validation**: The NixOS module configuration parameters must be strictly validated at evaluation time (using Nixpkgs types like `port`, `enum`, and `bool`) to prevent shell argument injections or malformed daemon flags. The systemd service is explicitly executed as a user-level service (`systemd.user.services.pc-dashboard-server`) to adhere to the unprivileged access security guideline.
 20. **ADB Auto-Start Service Boundaries**: When the NixOS module option `adb.autoStartServer` is enabled, the ADB server is started via an `ExecStartPre` command inside the user-level systemd daemon. This executes the command as the unprivileged session user rather than root, ensuring the spawned ADB process inherits the user's permissions and has access to the user's secure authentication keys (`~/.android/adbkey`) for device pairing, preventing privilege elevation.
+21. **NVIDIA Driver Path Propagation Security**: Exposing the host's active NVIDIA driver package to the systemd user service PATH allows executing `nvidia-smi` securely under the unprivileged user session context. It avoids hardcoding arbitrary system binaries or exposing root-level system execution privileges.
 
