@@ -121,6 +121,12 @@ in
         default = false;
         description = "Prevent the daemon from launching or closing the companion app.";
       };
+
+      autoStartServer = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Automatically start the local ADB server before starting the daemon.";
+      };
     };
 
     emulateMetrics = mkOption {
@@ -177,6 +183,8 @@ in
         ExecStart = "${cfg.package}/bin/pc-dashboard-server start ${escapeShellArgs flags}";
         Restart = "on-failure";
         RestartSec = "3s";
+      } // optionalAttrs (cfg.adb.autoStartServer && (cfg.adb.serverHost == "127.0.0.1" || cfg.adb.serverHost == "localhost")) {
+        ExecStartPre = "${pkgs.android-tools}/bin/adb start-server";
       };
     };
 
