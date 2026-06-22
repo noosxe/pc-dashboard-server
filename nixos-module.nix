@@ -178,7 +178,7 @@ in
       after = [ "graphical-session-pre.target" ];
       partOf = [ "graphical-session.target" ];
       wantedBy = [ "graphical-session.target" ];
-      path = optionals (config.hardware.nvidia.enable or false) [
+      path = optionals (elem "nvidia" (config.services.xserver.videoDrivers or [ ])) [
         config.hardware.nvidia.package
       ];
       serviceConfig = {
