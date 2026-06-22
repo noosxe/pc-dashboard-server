@@ -178,6 +178,9 @@ in
       after = [ "graphical-session-pre.target" ];
       partOf = [ "graphical-session.target" ];
       wantedBy = [ "graphical-session.target" ];
+      path = optionals (config.hardware.nvidia.enable or false) [
+        config.hardware.nvidia.package
+      ];
       serviceConfig = {
         Type = "simple";
         ExecStart = "${cfg.package}/bin/pc-dashboard-server start ${escapeShellArgs flags}";
