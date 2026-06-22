@@ -27,7 +27,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🛡️ Secure Loopback Binding**: Exposes zero network ports by binding all WebSocket and ConnectRPC APIs strictly to the `127.0.0.1` interface.
 - **⚙️ Modular Configuration Engine**: Uses `koanf` to cleanly merge static YAML/TOML configs, environment variables, and CLI parameters.
 - **📊 Full Sandbox Emulation**: Supports complete metrics, ADB, D-Bus, and MPRIS mocking to run/test anywhere without physical hardware.
-- **❄️ Nix Flake & NixOS Module**: Includes reproducible developer shells and direct declarative user systemd service deployments on NixOS, featuring automated ADB server lifecycle management.
+- **❄️ Nix Flake & NixOS Module**: Includes reproducible developer shells and direct declarative user systemd service deployments on NixOS, featuring automated ADB server lifecycle and NVIDIA driver PATH management.
 
 ---
 
@@ -99,11 +99,6 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inbound WebSocket Command**: Implements a `launch_app_command` payload containing a valid whitelisted `app_key`.
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
-
-### 10. ❄️ NixOS NVIDIA GPU Path Propagation 🟡 *[Design Phase]*
-Automatically propagate the host's NVIDIA driver package into the systemd user service PATH on NixOS systems.
-- **Mechanisms**: Dynamically query `config.hardware.nvidia.enable`. If enabled, append `config.hardware.nvidia.package` to the `path` list of the `systemd.user.services.pc-dashboard-server` unit.
-- **Benefits**: Resolves "command not found" errors when executing `nvidia-smi` inside systemd user service contexts without requiring manual user path overrides.
 
 ### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
