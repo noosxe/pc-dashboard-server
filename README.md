@@ -27,7 +27,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🛡️ Secure Loopback Binding**: Exposes zero network ports by binding all WebSocket and ConnectRPC APIs strictly to the `127.0.0.1` interface.
 - **⚙️ Modular Configuration Engine**: Uses `koanf` to cleanly merge static YAML/TOML configs, environment variables, and CLI parameters.
 - **📊 Full Sandbox Emulation**: Supports complete metrics, ADB, D-Bus, and MPRIS mocking to run/test anywhere without physical hardware.
-- **❄️ Nix Flake & NixOS Module**: Includes reproducible developer shells and direct declarative user systemd service deployments on NixOS.
+- **❄️ Nix Flake & NixOS Module**: Includes reproducible developer shells and direct declarative user systemd service deployments on NixOS, featuring automated ADB server lifecycle management.
 
 ---
 
@@ -99,11 +99,6 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inbound WebSocket Command**: Implements a `launch_app_command` payload containing a valid whitelisted `app_key`.
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
-
-### 10. ❄️ NixOS ADB Auto-Start Option 🟡 *[Design Phase]*
-Provide a declarative configuration option in the NixOS module to automatically spawn the local ADB server daemon before launching the PC Dashboard Server.
-- **Mechanisms**: Add an `adb.autoStartServer` option to the NixOS module (default `true` for local ADB hosts). When enabled, add an `ExecStartPre` directive running `${pkgs.android-tools}/bin/adb start-server` to the user-level systemd service configuration.
-- **Benefits**: Ensures the daemon can communicate with the ADB server out-of-the-box upon session start without requiring manual terminal activation of ADB, while retaining unprivileged user-space session boundaries and key access.
 
 ### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
