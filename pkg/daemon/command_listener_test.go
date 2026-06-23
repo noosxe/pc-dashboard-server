@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,8 +23,7 @@ import (
 
 func TestEngine_CommandListenerHandshake(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	tmpDir := t.TempDir()
-	socketPath := filepath.Join(tmpDir, "pc-dashboard-test.sock")
+	socketPath := createShortSocketPath(t)
 
 	// 1. Setup mock configs
 	cfg := &config.Config{}
@@ -197,8 +197,7 @@ func TestEngine_CommandListenerHandshake(t *testing.T) {
 
 func TestEngine_CommandListenerConflict(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	tmpDir := t.TempDir()
-	socketPath := filepath.Join(tmpDir, "pc-dashboard-test.sock")
+	socketPath := createShortSocketPath(t)
 
 	cfg := &config.Config{}
 	cfg.Daemon.SocketPath = socketPath
@@ -229,4 +228,17 @@ func TestEngine_CommandListenerConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected engine2 startup to fail due to conflicting socket, but it succeeded")
 	}
+}
+
+// createShortSocketPath creates a Unix socket path with a short length
+// to avoid exceeding the Linux 108-character limit under long test environments (e.g. Nix sandboxes).
+func createShortSocketPath(t *testing.T) string {
+	tmpDir, err := os.MkdirTemp("", "pcd-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(tmpDir)
+	})
+	return filepath.Join(tmpDir, "p.sock")
 }
