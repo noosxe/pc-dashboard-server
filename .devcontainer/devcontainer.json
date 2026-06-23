@@ -12,15 +12,16 @@
 		 	"version": "latest",
 		 	"moby": false
 		},
-		"ghcr.io/devcontainers/features/github-cli:1": {}
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/aqua/devcontainer-antigravity-cli/antigravity-cli:1": {},
+		"ghcr.io/devcontainers/features/nix:1": {
+			"extraNixConfig": "experimental-features = nix-command flakes"
+		}
 	},
 	"runArgs": [
 		"--privileged",
 		"--dns=100.100.100.100"
 	],
-	"containerEnv": {
-		"GH_TOKEN": "${localEnv:GH_TOKEN}"
-	},
 	"customizations": {
 		"vscode": {
 			"settings": {
@@ -38,6 +39,17 @@
 						"[\"'`]([^\"'`]*?)[\"'`]"
 					]
 				],
+				"terminal.integrated.profiles.linux": {
+					"bash": {
+						"path": "bash",
+						"args": ["-l"]
+					},
+					"zsh": {
+						"path": "zsh",
+						"args": ["-l"]
+					}
+				},
+            	"terminal.integrated.defaultProfile.linux": "zsh",
 				"[go]": {
 					"editor.defaultFormatter": "golang.go",
 					"editor.formatOnSave": true,
