@@ -15,7 +15,8 @@
 		"ghcr.io/devcontainers/features/github-cli:1": {},
 		"ghcr.io/aqua/devcontainer-antigravity-cli/antigravity-cli:1": {},
 		"ghcr.io/devcontainers/features/nix:1": {
-			"extraNixConfig": "experimental-features = nix-command flakes"
+			"extraNixConfig": "experimental-features = nix-command flakes",
+			"multiUser": false
 		}
 	},
 	"runArgs": [
@@ -39,17 +40,6 @@
 						"[\"'`]([^\"'`]*?)[\"'`]"
 					]
 				],
-				"terminal.integrated.profiles.linux": {
-					"bash": {
-						"path": "bash",
-						"args": ["-l"]
-					},
-					"zsh": {
-						"path": "zsh",
-						"args": ["-l"]
-					}
-				},
-            	"terminal.integrated.defaultProfile.linux": "zsh",
 				"[go]": {
 					"editor.defaultFormatter": "golang.go",
 					"editor.formatOnSave": true,
@@ -71,9 +61,7 @@
 				"bufbuild.vscode-buf",
 				"tamasfe.even-better-toml",
 				"ms-azuretools.vscode-docker",
-				"tanstack.vscode-react-router-devtools",
-				"EditorConfig.EditorConfig",
-				"google.antigravity"
+				"EditorConfig.EditorConfig"
 			]
 		}
 	},
