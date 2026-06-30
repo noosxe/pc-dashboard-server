@@ -43,7 +43,7 @@ To keep this repository clean and easy to navigate, detailed guides and referenc
 *   **[Protocol Specification](docs/protocol_specification.md)**: ADB TCP length-prefixed protocol frames and custom JSON structures.
 *   **[ConnectRPC Specification](docs/connectrpc_specification.md)**: Plaintext HTTP/2 Connect-protocol endpoint references and streaming schemas.
 *   **[Testing & Emulation Guide](docs/testing_and_emulation.md)**: Metrics simulation formulas, mock ADB connection cycles, and testing mock environments.
-*   **[Agent Developer Guide](AGENTS.md)**: Git branch structures, commit regulations, and feature lifecycle workflows.
+*   **[Agent Developer Guide](.agents/AGENTS.md)**: Git branch structures, commit regulations, and feature lifecycle workflows.
 
 ---
 
@@ -110,5 +110,5 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 
 All active development is expected to take place within the provided **Devcontainer** (`.devcontainer`). It has pre-installed tools and environments to support smooth and secure contributions.
 
-Refer to the [Agent Developer Guide](AGENTS.md) for branch policies, check-out requirements, and code style rules before starting development or opening a pull request.
+Refer to the [Agent Developer Guide](.agents/AGENTS.md) for branch policies, check-out requirements, and code style rules before starting development or opening a pull request.
 
