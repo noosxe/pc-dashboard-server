@@ -8,9 +8,9 @@ Welcome to the **PC Dashboard Server** repository! As an agentic AI developer, y
 
 Before performing any tasks in this repository, you must adhere to the following rules regarding your execution environment:
 
-* 📦 **Devcontainer Environment**: All work must be performed inside the provided Devcontainer (`.devcontainer`). This is the expected and required environment.
-* 🛑 **Environment Verification**: If you detect that you are not running inside the Devcontainer, you must **stop immediately and report an error to the user**.
-* 🛡️ **No Container Escapes**: Never attempt to escape, bypass, or run commands outside of the Devcontainer environment.
+* 📦 **Nix Development Environment**: All work must be performed inside the Nix development shell (`nix develop`). This is the expected and required environment.
+* 🛑 **Environment Verification**: If you detect that you are not running inside the Nix development shell, you must **stop immediately and report an error to the user**.
+* 🛡️ **No Shell Escapes**: Never attempt to escape, bypass, or run commands outside of the Nix development shell environment.
 * 🔍 **Tool Validation & Reporting**: Always verify that all expected development tools are present and function as intended. If any expected tools are absent or do not work as intended, **stop and report the issue to the user**. Do not attempt to install system-level packages or work around missing system dependencies; these issues must be resolved by the user.
 
 ---
@@ -137,7 +137,7 @@ During this phase, the user reviews the updated documentation to evaluate the pr
 ### 3. Implementation Phase
 When the user asks for the feature implementation to proceed:
 1.  **Confirm Details**: Review and confirm the exact technical details and schemas established during the Design Phase.
-2.  **Develop & Test**: Implement the production code and corresponding automated tests, verifying everything passes within the devcontainer.
+2.  **Develop & Test**: Implement the production code and corresponding automated tests, verifying everything passes within the Nix development shell.
     *   **Telemetry Support Flags Requirement**: If a new telemetry metric was added, you must implement the corresponding boolean flag in the telemetry payload struct, calculate/determine its value dynamically based on hardware/permission support on the host machine, and update automated tests to verify the flag's behavior.
 3.  **Update README**:
     *   Remove the feature from the **Roadmap** section of `README.md`.
@@ -194,6 +194,6 @@ pc-dashboard-server/
 *   **Interface-First Design**: Production code and mock systems are decoupled via interfaces. Hardware telemetry uses `MetricsReader`. Android USB interactions use `ADBClient`.
 *   **Emulation Engines**: Tests and virtualized containers run in Emulation Mode via `--emulate-metrics` (smooth wave algorithms) and `--mock-adb` (simulated physical device connection ticks).
 *   **Network Bound Safety**: Under no circumstance should the WebSocket server bind outside the local loopback boundary (`127.0.0.1`).
-*   **ADB Socket Protocol**: The production client communicates strictly over raw TCP connection streams on port `5037` (or `host.docker.internal:5037` in Devcontainers) using length-prefixed ADB protocol headers. **Do not invoke external `adb` CLI shell binaries.**
+*   **ADB Socket Protocol**: The production client communicates strictly over raw TCP connection streams on port `5037` (or `host.docker.internal:5037` in containerized environments if applicable) using length-prefixed ADB protocol headers. **Do not invoke external `adb` CLI shell binaries.**
 *   **Android Package**: The client companion app package name is strictly: `com.noosxe.pc_dashboard`.
 
