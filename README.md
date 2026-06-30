@@ -108,7 +108,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 
 ## 💻 Development & Contributing
 
-All active development is expected to take place within the provided **Devcontainer** (`.devcontainer`). It has pre-installed tools and environments to support smooth and secure contributions.
+All active development is expected to take place within the Nix development shell (`nix develop`). It provides the necessary tools and compiler toolchains to support smooth contributions.
 
 Refer to the [Agent Developer Guide](.agents/AGENTS.md) for branch policies, check-out requirements, and code style rules before starting development or opening a pull request.
 

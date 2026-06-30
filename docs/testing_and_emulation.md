@@ -277,19 +277,19 @@ func TestTelemetryBroadcaster(t *testing.T) {
 
 ---
 
-## 7. Devcontainer Testing & Network Boundaries
+## 7. Containerized & Virtualized Testing & Network Boundaries
 
-Developing and verifying the PC Dashboard Server inside a virtualized environment (such as VS Code Devcontainers) introduces distinct networking and hardware boundary challenges for both human developers and LLM agents. 
+Developing and verifying the PC Dashboard Server inside a virtualized or containerized environment introduces distinct networking and hardware boundary challenges for both human developers and LLM agents. 
 
 To achieve full testability without compromising physical environments, the following patterns are established:
 
 ### 7.1. Exposing the WebSocket Server (Port Forwarding)
-The daemon binds strictly to local loopback `127.0.0.1:12345` inside the devcontainer. To enable diagnostic browser rigs or external clients on the host system to interact with the containerized WebSocket server, port `12345` must be forwarded:
-*   Add port `12345` to the `forwardPorts` list in `.devcontainer/devcontainer.json` (completed).
-*   This automatically maps `127.0.0.1:12345` on the host machine to the running server in the container, enabling local tools (like browser diagnostic screens and `websocat` on the host machine) to connect transparently.
+The daemon binds strictly to local loopback `127.0.0.1:12345` inside the container. To enable diagnostic browser rigs or external clients on the host system to interact with the containerized WebSocket server, port `12345` must be forwarded:
+*   In a Docker environment, publish the port (e.g. using `-p 12345:12345`).
+*   This maps `127.0.0.1:12345` on the host machine to the running server in the container, enabling local tools (like browser diagnostic screens and `websocat` on the host machine) to connect transparently.
 
 ### 7.2. Connecting to the Host's Physical ADB Server
-By default, the daemon attempts to connect to `127.0.0.1:5037` to track physical USB devices. Inside a devcontainer, `127.0.0.1` refers to the container itself, which lacks access to the host's USB controller and real ADB daemon.
+By default, the daemon attempts to connect to `127.0.0.1:5037` to track physical USB devices. Inside a container, `127.0.0.1` refers to the container itself, which lacks access to the host's USB controller and real ADB daemon.
 To connect to the host's actual ADB server (connected to physical companion devices or Android emulator instances):
 1.  **Configure Host Network Resolving**:
     Set the daemon configuration value `adb.server_host` to **`host.docker.internal`** instead of `127.0.0.1`:
@@ -300,7 +300,7 @@ To connect to the host's actual ADB server (connected to physical companion devi
     ```
 2.  **Enable Host Port Exposure**:
     Ensure the ADB daemon running on the host system is configured to accept TCP loopback connections.
-3.  This dynamically routes the socket tracking directly to the host's hardware state, allowing real-world testing of physical USB hotplug events entirely from inside the devcontainer.
+3.  This dynamically routes the socket tracking directly to the host's hardware state, allowing real-world testing of physical USB hotplug events entirely from inside the container.
 
 ### 7.3. Direct ADB TCP Socket Mocking (In-Memory Integration Tests)
 To allow LLM agents to execute automated integration tests (such as `go test ./...`) inside headless CI environments or local sandboxes where no ADB server is running at all, tests must mock the TCP protocol layer:

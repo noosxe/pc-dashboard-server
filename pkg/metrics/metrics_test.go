@@ -175,7 +175,7 @@ func TestHostMetricsReader_GetFlags(t *testing.T) {
 	_, _ = reader.ReadZRAM()
 
 	flags := reader.GetFlags()
-	// At least RAMSupported should be true on standard Linux devcontainer
+	// At least RAMSupported should be true on standard Linux environments
 	if !flags.RAMSupported {
 		t.Logf("Warning: RAMSupported is false (could be non-Linux environment in testing)")
 	}
