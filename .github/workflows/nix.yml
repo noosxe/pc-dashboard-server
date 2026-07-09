@@ -1,0 +1,25 @@
+name: Nix CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  nix-check-build:
+    name: Nix Flake Check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Flake Schema Validation
+        run: nix flake check
+
+      - name: Flake Package Build Verification
+        run: nix build .
