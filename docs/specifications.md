@@ -714,6 +714,13 @@ The NixOS module integrates the daemon as a systemd user service. Since the daem
 2. **Systemd Integration**:
    When active, the module instantiates a systemd user unit `pc-dashboard-server.service` within the user session target `graphical-session.target`. The unit automatically manages lifetimes, restarts, and arguments formatting. Additionally, the module automatically propagates `config.hardware.nvidia.package` to the service's `path` list if `config.services.xserver.videoDrivers` contains `"nvidia"`, ensuring `nvidia-smi` is available in the daemon environment.
 
+#### C. Continuous Integration (CI)
+To guarantee that the Nix build remains functional and the `vendorHash` in the flake definition matches the actual Go dependencies (preventing inconsistent vendoring issues when Go dependencies are upgraded), a dedicated GitHub Actions workflow is executed during pull request reviews and pushes:
+1. **Runner Environment**: Executes on `ubuntu-latest`.
+2. **Nix Installation**: Standardized via the `determinate-systems/nix-installer-action` to set up a multi-user Nix installation with caching enabled.
+3. **Flake Schema Validation**: Runs `nix flake check` to ensure the flake definition, dependencies, and outputs conform to Nix standards.
+4. **Flake Package Build Verification**: Runs `nix build .` to verify that the Go module compile phase succeeds within the Nix build sandbox.
+
 ---
 
 ## 4. Security Model & Guidelines
@@ -741,4 +748,5 @@ To ensure maximum safety and protect the user's host machine, the daemon adheres
 19. **NixOS Module Parameter Validation**: The NixOS module configuration parameters must be strictly validated at evaluation time (using Nixpkgs types like `port`, `enum`, and `bool`) to prevent shell argument injections or malformed daemon flags. The systemd service is explicitly executed as a user-level service (`systemd.user.services.pc-dashboard-server`) to adhere to the unprivileged access security guideline.
 20. **ADB Auto-Start Service Boundaries**: When the NixOS module option `adb.autoStartServer` is enabled, the ADB server is started via an `ExecStartPre` command inside the user-level systemd daemon. This executes the command as the unprivileged session user rather than root, ensuring the spawned ADB process inherits the user's permissions and has access to the user's secure authentication keys (`~/.android/adbkey`) for device pairing, preventing privilege elevation.
 21. **NVIDIA Driver Path Propagation Security**: Exposing the host's active NVIDIA driver package to the systemd user service PATH allows executing `nvidia-smi` securely under the unprivileged user session context. It avoids hardcoding arbitrary system binaries or exposing root-level system execution privileges.
+22. **Nix CI Sandbox Protection**: The GitHub Actions Nix CI workflow must not request or execute with elevated write permissions to the repository or packages. It runs builds in an isolated Nix sandbox environment to ensure no malicious runner code execution can affect downstream build artifacts.
 
