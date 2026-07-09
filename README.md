@@ -27,7 +27,7 @@ By using physical USB connections instead of local Wi-Fi networks, the system ac
 - **🛡️ Secure Loopback Binding**: Exposes zero network ports by binding all WebSocket and ConnectRPC APIs strictly to the `127.0.0.1` interface.
 - **⚙️ Modular Configuration Engine**: Uses `koanf` to cleanly merge static YAML/TOML configs, environment variables, and CLI parameters.
 - **📊 Full Sandbox Emulation**: Supports complete metrics, ADB, D-Bus, and MPRIS mocking to run/test anywhere without physical hardware.
-- **❄️ Nix Flake & NixOS Module**: Includes reproducible developer shells and direct declarative user systemd service deployments on NixOS, featuring automated ADB server lifecycle and NVIDIA driver PATH management.
+- **❄️ Nix Flake & NixOS Module**: Includes reproducible developer shells, direct declarative user systemd service deployments on NixOS (featuring automated ADB server lifecycle and NVIDIA driver PATH management), and an automated GitHub Actions CI workflow to validate the flake schema and Go package builds.
 
 ---
 
@@ -100,12 +100,7 @@ Allow launching pre-configured host applications (e.g., Steam, Discord, browsers
 - **Inherited Session Context**: Spawns GUI applications asynchronously within the user's systemd session context, automatically resolving graphical display settings (`DISPLAY`, `WAYLAND_DISPLAY`).
 - *Status*: Protocol schema, configuration keys, and security constraints established. Awaiting design review and approval.
 
-### 9. ❄️ Nix Flake CI Workflow 🟡 *[Design Phase]*
-Automatically validate and build Nix flake outputs during Pull Request reviews and pushes, ensuring the Go dependency module vendoring (`vendorHash`) remains consistent and correct.
-- **Workflow Steps**: Runs `nix flake check` and `nix build .` inside a GitHub Actions environment with Nix installed.
-- *Status*: Design and security guidelines established. Awaiting design review and approval.
-
-### 10. ⚡ Additional Planned Enhancements
+### 9. ⚡ Additional Planned Enhancements
 - **🌐 Network & Disk I/O Metrics**: Add real-time network throughput (upload/download rates) and disk read/write bandwidth metrics to the telemetry payload.
 - **🔋 Battery & Power States**: Support tracking connected Android device power/battery telemetry or power state flags to hibernate/resume polling loops.
 
