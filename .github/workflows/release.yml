@@ -60,7 +60,7 @@ jobs:
           tar -czvf pc-dashboard-server-linux-amd64.tar.gz pc-dashboard-server
 
       - name: Generate Artifact Attestation
-        uses: actions/attest@v2
+        uses: actions/attest@v4
         with:
           subject-path: pc-dashboard-server-linux-amd64.tar.gz
 
