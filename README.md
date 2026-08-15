@@ -112,3 +112,9 @@ All active development is expected to take place within the Nix development shel
 
 Refer to the [Agent Developer Guide](.agents/AGENTS.md) for branch policies, check-out requirements, and code style rules before starting development or opening a pull request.
 
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
