@@ -131,6 +131,8 @@ You can import this repository as a flake input, add its default overlay, and en
             # Optional: Enable udev rules for CPU RAPL energy (power_watts telemetry)
             enableCpuPowerMetrics = true;
           };
+            # Optional: Add the pc-dashboard-server binary to the system PATH
+            installBinary = true;
         })
       ];
     };

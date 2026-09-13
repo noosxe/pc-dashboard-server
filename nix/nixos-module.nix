@@ -49,6 +49,12 @@ in
       description = "The pc-dashboard-server package to use.";
     };
 
+    installBinary = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Add the pc-dashboard-server package to the system PATH (all users).";
+    };
+
     host = mkOption {
       type = types.str;
       default = "127.0.0.1";
@@ -173,6 +179,8 @@ in
   };
 
   config = mkIf cfg.enable {
+    environment.systemPackages = mkIf cfg.installBinary [ cfg.package ];
+
     systemd.user.services.pc-dashboard-server = {
       description = "PC Dashboard Server Daemon";
       after = [ "graphical-session-pre.target" ];
