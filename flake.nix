@@ -29,10 +29,12 @@
           meta = with pkgs.lib; {
             description = "A lightweight, low-overhead system daemon for PC Dashboard";
             homepage = "https://github.com/noosxe/pc-dashboard-server";
+            mainProgram = "pc-dashboard-server";
           };
         };
 
         packages.default = self.packages.${system}.pc-dashboard-server;
+        apps.default = flake-utils.lib.mkApp { drv = self.packages.${system}.pc-dashboard-server; };
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
