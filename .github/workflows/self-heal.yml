@@ -1,0 +1,121 @@
+name: Nix Self-Heal
+
+# Dependabot bumps go.mod/go.sum but cannot update the flake.nix vendorHash,
+# which leaves main red until a manual fix lands. This workflow detects the
+# hash mismatch, rewrites vendorHash with the hash Nix reports, verifies the
+# rebuild, and pushes the fix straight to main.
+#
+# Triggers:
+#   - push to main touching go.mod/go.sum (Dependabot merges heal in minutes)
+#   - hourly cron sweep (catches anything the push run missed, e.g. races)
+#   - manual dispatch for testing
+#
+# Note: pushes made with GITHUB_TOKEN do not trigger other workflows
+# (GitHub anti-recursion), so the heal commit is verified here with
+# `nix build` before being pushed instead of relying on Nix CI.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nix-self-heal
+  cancel-in-progress: false
+
+jobs:
+  self-heal-vendorhash:
+    name: Nix vendorHash Self-Heal
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          # Full history: the fix-step names the bumped dependency from the
+          # last go.mod/go.sum commit diff (needs parent commits).
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v23
+
+      - name: Flake Package Build Verification
+        id: build
+        continue-on-error: true
+        run: |
+          set +e
+          nix build . --print-build-logs > build.log 2>&1
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+          cat build.log
+          exit 0
+
+      - name: Rewrite vendorHash on Hash Mismatch
+        id: heal
+        if: steps.build.outputs.exitcode != '0'
+        run: |
+          set -euo pipefail
+
+          if ! grep -q 'hash mismatch in fixed-output derivation' build.log; then
+            echo "::error::Build failed for a non-hash-mismatch reason; not self-healing."
+            exit 1
+          fi
+
+          specified=$(sed -n 's/.*specified: \(sha256-[A-Za-z0-9+/=]*\).*/\1/p' build.log | head -n1)
+          got=$(sed -n 's/.*got:.*\(sha256-[A-Za-z0-9+/=]*\).*/\1/p' build.log | head -n1)
+
+          if [ -z "$specified" ] || [ -z "$got" ]; then
+            echo "::error::Could not parse hashes from the build log; not self-healing."
+            exit 1
+          fi
+
+          current=$(sed -n 's/.*vendorHash = "\(sha256-[^"]*\)".*/\1/p' flake.nix)
+
+          if [ "$current" != "$specified" ]; then
+            echo "::error::flake.nix vendorHash ($current) does not match the failed derivation hash ($specified); not self-healing."
+            exit 1
+          fi
+
+          if [ "$current" = "$got" ]; then
+            echo "vendorHash already matches; nothing to do."
+            exit 0
+          fi
+
+          sed -i "s|$specified|$got|" flake.nix
+          echo "new=$got" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Rebuild
+        if: steps.heal.outputs.new != ''
+        run: nix build .
+
+      - name: Commit and Push Fix
+        if: steps.heal.outputs.new != ''
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          dep=$(git log -1 --format=%H -- go.mod go.sum \
+            | xargs -r -I{} git diff '{}^' '{}' -- go.mod \
+            | sed -n 's/^+[[:space:]]*\([^[:space:]]*\) v.*/\1/p' \
+            | head -n1)
+
+          msg="fix(nix): update vendorHash"
+          if [ -n "$dep" ]; then
+            msg="fix(nix): update vendorHash for $dep"
+          fi
+
+          git add flake.nix
+          git commit -m "$msg"
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
+          echo "Pushed: $msg ($(git rev-parse --short HEAD))"
