@@ -87,7 +87,7 @@ programs.adb.enable = true;
 users.users.<your-username>.extraGroups = [ "adbusers" ];
 ```
 
-By default, the daemon's NixOS module will automatically start the local ADB server daemon before launching (`services.pc-dashboard-server.adb.autoStartServer = true`). This spawns the ADB server under your unprivileged user session context (inheriting access to your local keys at `~/.android/` for device authentication) so the server is ready out-of-the-box. If you configure a remote ADB server or manage its lifecycle manually, you can set `autoStartServer = false;`.
+By default, the daemon's NixOS module runs the local ADB server as its own user service, `pc-dashboard-adb.service`, started alongside the daemon (`services.pc-dashboard-server.adb.autoStartServer = true`). This runs the ADB server under your unprivileged user session context (inheriting access to your local keys at `~/.android/` for device authentication) so the server is ready out-of-the-box. If you configure a remote ADB server or manage its lifecycle manually, you can set `autoStartServer = false;`.
 
 Additionally, if you are running on an NVIDIA GPU system with the proprietary driver enabled (`services.xserver.videoDrivers = [ "nvidia" ]`), the NixOS module will automatically propagate the matching NVIDIA driver package to the systemd user service PATH. This makes `nvidia-smi` available to the daemon, allowing it to collect GPU hardware metrics natively without manual PATH overrides.
 

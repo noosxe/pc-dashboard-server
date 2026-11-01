@@ -37,6 +37,9 @@ let
     ++ optional cfg.mockLock "--mock-lock"
     ++ optional cfg.mockDpms "--mock-dpms"
     ++ cfg.extraFlags;
+
+  manageAdbServer = cfg.adb.autoStartServer
+    && (cfg.adb.serverHost == "127.0.0.1" || cfg.adb.serverHost == "localhost");
 in
 {
   options.services.pc-dashboard-server = {
@@ -131,7 +134,7 @@ in
       autoStartServer = mkOption {
         type = types.bool;
         default = true;
-        description = "Automatically start the local ADB server before starting the daemon.";
+        description = "Run the local ADB server as a supervised user service (pc-dashboard-adb.service) alongside the daemon.";
       };
     };
 
@@ -181,9 +184,26 @@ in
   config = mkIf cfg.enable {
     environment.systemPackages = mkIf cfg.installBinary [ cfg.package ];
 
+    # The ADB server runs in the foreground as its own unit. `adb start-server`
+    # forks the daemon and exits, which would leave it in the dashboard's
+    # cgroup ("left-over process") and unsupervised. The dashboard reconnects
+    # to the server on its own, so it only needs a soft dependency.
+    systemd.user.services.pc-dashboard-adb = mkIf manageAdbServer {
+      description = "ADB server for PC Dashboard";
+      after = [ "graphical-session-pre.target" ];
+      partOf = [ "graphical-session.target" ];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${pkgs.android-tools}/bin/adb -P ${toString cfg.adb.serverPort} server nodaemon";
+        Restart = "always";
+        RestartSec = "3s";
+      };
+    };
+
     systemd.user.services.pc-dashboard-server = {
       description = "PC Dashboard Server Daemon";
-      after = [ "graphical-session-pre.target" ];
+      wants = optional manageAdbServer "pc-dashboard-adb.service";
+      after = [ "graphical-session-pre.target" ] ++ optional manageAdbServer "pc-dashboard-adb.service";
       partOf = [ "graphical-session.target" ];
       wantedBy = [ "graphical-session.target" ];
       path = optionals (elem "nvidia" (config.services.xserver.videoDrivers or [ ])) [
@@ -194,8 +214,6 @@ in
         ExecStart = "${cfg.package}/bin/pc-dashboard-server start ${escapeShellArgs flags}";
         Restart = "on-failure";
         RestartSec = "3s";
-      } // optionalAttrs (cfg.adb.autoStartServer && (cfg.adb.serverHost == "127.0.0.1" || cfg.adb.serverHost == "localhost")) {
-        ExecStartPre = "${pkgs.android-tools}/bin/adb start-server";
       };
     };
 
