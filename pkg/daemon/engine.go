@@ -87,6 +87,8 @@ type Engine struct {
 	lastPowerState   *power.PowerProfileState
 	dpmsStateMu      sync.RWMutex
 	lastDpmsState    *dpms.DpmsEvent
+	adbRetryMin      time.Duration
+	adbRetryMax      time.Duration
 }
 
 // NewEngine constructs a central Orchestrator.
@@ -104,6 +106,8 @@ func NewEngine(cfg *config.Config, mr metrics.MetricsReader, ac adb.ADBClient, n
 		interval:         time.Duration(cfg.Daemon.UpdateIntervalMS) * time.Millisecond,
 		resetChan:        make(chan time.Duration, 5),
 		activeSerials:    make(map[string]bool),
+		adbRetryMin:      1 * time.Second,
+		adbRetryMax:      30 * time.Second,
 	}
 
 	// Wire callbacks into the WebSocket connection pool
@@ -252,20 +256,57 @@ func (e *Engine) handleNotificationCommand(req notifications.NotificationRequest
 	return e.notificationMgr.SendNotification(ctx, req)
 }
 
-// runADBTracker monitors ADB connection stream and bootstraps new devices.
+// runADBTracker keeps the ADB device tracking stream alive. The ADB server is
+// an external process that may start after the daemon or restart while it
+// runs, so connection failures and stream closures are retried with
+// exponential backoff instead of ending device tracking.
 func (e *Engine) runADBTracker(ctx context.Context) error {
+	backoff := e.adbRetryMin
+	for {
+		connected, err := e.trackADBDevices(ctx)
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		// The ADB server forgets reverse port tunnels when it goes away, so drop
+		// the stale serials; devices are re-bootstrapped once tracking resumes.
+		e.serialsMu.Lock()
+		clear(e.activeSerials)
+		e.serialsMu.Unlock()
+
+		if connected {
+			backoff = e.adbRetryMin
+		}
+		if err != nil {
+			e.logger.Warn("ADB server unavailable. Retrying", "error", err, "retry_in", backoff)
+		} else {
+			e.logger.Warn("ADB device tracking stream closed. Reconnecting", "retry_in", backoff)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, e.adbRetryMax)
+	}
+}
+
+// trackADBDevices consumes one ADB device tracking stream and bootstraps new
+// devices. It reports whether the stream was established.
+func (e *Engine) trackADBDevices(ctx context.Context) (bool, error) {
 	events, err := e.adbClient.TrackDevices(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return true, nil
 		case ev, ok := <-events:
 			if !ok {
-				return nil
+				return true, nil
 			}
 
 			if ev.State == adb.StateOnline {
