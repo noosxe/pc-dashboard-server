@@ -332,3 +332,100 @@ func TestEngine_DpmsNoAppControl(t *testing.T) {
 		t.Error("expected WakeDevice NOT to be called on DPMS on when NoAppControl is true")
 	}
 }
+
+// flakyADBClient fails the first connection attempts, then serves one tracking
+// stream per call that reports the device online and closes immediately,
+// mimicking an ADB server that starts late and later restarts.
+type flakyADBClient struct {
+	trackingADBClient
+	failures int
+	calls    int
+	launches int
+}
+
+func (c *flakyADBClient) TrackDevices(ctx context.Context) (<-chan adb.DeviceEvent, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls++
+	if c.calls <= c.failures {
+		return nil, io.ErrUnexpectedEOF
+	}
+	out := make(chan adb.DeviceEvent, 1)
+	out <- adb.DeviceEvent{Serial: "TEST_SERIAL", State: adb.StateOnline}
+	close(out)
+	return out, nil
+}
+
+func (c *flakyADBClient) LaunchApp(ctx context.Context, serial string, pkg, activity string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.launches++
+	return nil
+}
+
+func (c *flakyADBClient) counts() (int, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls, c.launches
+}
+
+func TestEngine_ADBTrackerReconnects(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	ac := &flakyADBClient{failures: 2}
+	engine := NewEngine(&config.Config{}, nil, ac, nil, nil, nil, nil, nil, logger, logger)
+	engine.adbRetryMin = time.Millisecond
+	engine.adbRetryMax = 4 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- engine.runADBTracker(ctx) }()
+
+	// Two failed connects, then at least two streams that each bootstrap the device.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		calls, launches := ac.counts()
+		if calls >= 4 && launches >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tracker did not reconnect: calls=%d launches=%d", calls, launches)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("expected nil error on cancellation, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not stop after context cancellation")
+	}
+}
+
+func TestEngine_ADBTrackerStopsWhileWaiting(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// The server never comes up and the retry delay is long; cancellation must
+	// still end the tracker promptly.
+	ac := &flakyADBClient{failures: 1 << 30}
+	engine := NewEngine(&config.Config{}, nil, ac, nil, nil, nil, nil, nil, logger, logger)
+	engine.adbRetryMin = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- engine.runADBTracker(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("expected nil error on cancellation, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("tracker did not stop while waiting to retry")
+	}
+}
