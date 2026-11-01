@@ -14,7 +14,7 @@
       {
         packages.pc-dashboard-server = pkgs.buildGoModule {
           pname = "pc-dashboard-server";
-          version = "0.3.0";
+          version = "0.5.0";
 
           src = ./.;
 
@@ -47,7 +47,7 @@
       }
     ) // {
       overlays.default = final: prev: {
-        pc-dashboard-server = self.packages.${final.system}.pc-dashboard-server;
+        pc-dashboard-server = self.packages.${final.stdenv.hostPlatform.system}.pc-dashboard-server;
       };
       nixosModules.pc-dashboard-server = import ./nix/nixos-module.nix self;
       nixosModules.default = self.nixosModules.pc-dashboard-server;
