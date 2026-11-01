@@ -170,6 +170,7 @@ Rather than executing external `adb devices` calls inside polling loops, the Go 
 1.  Connect via TCP socket to the ADB server on `127.0.0.1:5037`.
 2.  Transmit the protocol command: `host:track-devices` (preceded by a 4-hex-character length descriptor: `0012host:track-devices`).
 3.  The ADB server will stream updates whenever physical USB devices are plugged in, removed, or change state (e.g. `[serial] online`, `[serial] offline`).
+4.  If the ADB server is unreachable (not started yet) or the tracking stream closes (server restarted), the daemon keeps running and retries with exponential backoff (1s, doubling up to 30s, reset after each established stream). Tracked devices are forgotten when the stream drops, so every device the restarted server reports is bootstrapped again, re-creating the reverse tunnels the old server lost.
 
 #### B. Companion App Bootstrapping
 When the target Android device transitions to the `online` state, the daemon initiates a three-step bootstrap:
