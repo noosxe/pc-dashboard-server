@@ -42,6 +42,9 @@
             gopls
             gotools
             go-tools
+            # Validates config files against JSON schemas, e.g.
+            # check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
+            check-jsonschema
           ];
         };
       }
