@@ -17,7 +17,10 @@ let
       locked_update_interval_ms = cfg.lockedUpdateIntervalMs;
       log_level = cfg.logLevel;
       log_format = cfg.logFormat;
-      socket_path = if cfg.socketPath != null then cfg.socketPath else "";
+    } // optionalAttrs (cfg.socketPath != null) {
+      # Leave the key out when unset: an empty socket_path disables the
+      # control socket instead of falling back to the default path.
+      socket_path = cfg.socketPath;
     };
     adb = {
       server_host = cfg.adb.serverHost;
