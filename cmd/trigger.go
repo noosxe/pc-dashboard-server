@@ -61,7 +61,20 @@ var dpmsState string
 // DpmsCmd triggers a display power (DPMS) state event
 var DpmsCmd = &cobra.Command{
 	Use:   "dpms",
-	Short: "Trigger a mock DPMS display power event",
+	Short: "Report a host display power (DPMS) change",
+	Long: `Reports a host display power (DPMS) change to the daemon.
+
+This is not only a simulation. The daemon puts connected companion devices
+to sleep (--state off) or wakes them (--state on) over ADB, unless
+adb.no_app_control is set, and broadcasts the new state to clients.
+
+The daemon detects display power changes on its own only on GNOME. On other
+desktops, call this from the hook that turns the monitors off and on, e.g.:
+
+  swayidle timeout 600 'swaymsg "output * power off"; pc-dashboard-server trigger dpms --state off' \
+           resume 'swaymsg "output * power on"; pc-dashboard-server trigger dpms --state on'
+
+Run it as the same user as the daemon (the socket is owner-only).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		state := strings.ToLower(dpmsState)
 		if state != "on" && state != "off" {

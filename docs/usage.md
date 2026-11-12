@@ -50,7 +50,7 @@ pc-dashboard-server start --emulate-metrics --mock-adb --verbose
 The `trigger` command connects to the active background daemon via a local Unix socket to trigger simulated events down the WebSocket stream. It supports several event category subcommands:
 
 *   `lock` / `unlock`: Simulates screen locking/unlocking.
-*   `dpms`: Simulates display power management state transitions.
+*   `dpms`: Reports a host display power (DPMS) change to the daemon. This is not only a simulation: the daemon puts connected companion devices to sleep (`off`) or wakes them (`on`) over ADB, unless `adb.no_app_control` is set, and broadcasts the new state to clients. See [Display Power Hook](#display-power-hook).
     *   `--state`: The display power state, either `on` or `off` (default `"off"`).
 *   `notification`: Dispatches mock desktop notifications.
     *   `--app-name`: Name of the triggering application (default `"pc-dashboard"`).
@@ -116,7 +116,7 @@ The `trigger` command connects to the active background daemon via a local Unix 
 # Trigger a session lock screen
 pc-dashboard-server trigger lock
 
-# Trigger a display power off event
+# Report that the monitors turned off (also puts connected devices to sleep)
 pc-dashboard-server trigger dpms --state off
 
 # Trigger a custom notification toast
@@ -128,6 +128,36 @@ pc-dashboard-server trigger power --active performance --available power-saver,b
 # Trigger a raw custom payload
 pc-dashboard-server trigger raw -t custom_sensor -d '{"utilization": 85.5}'
 ```
+
+### Display Power Hook
+
+The daemon detects display power changes on its own only on GNOME (Mutter). On other desktops and compositors (KDE, Sway, Hyprland, i3, …), call `trigger dpms` from whatever turns the monitors off and on, so the companion device's screen sleeps and wakes with them.
+
+For example, with `swayidle`:
+
+```bash
+swayidle -w \
+  timeout 600 'swaymsg "output * power off"; pc-dashboard-server trigger dpms --state off' \
+  resume 'swaymsg "output * power on"; pc-dashboard-server trigger dpms --state on'
+```
+
+Or in `hypridle.conf`:
+
+```ini
+listener {
+    timeout = 600
+    on-timeout = hyprctl dispatch dpms off; pc-dashboard-server trigger dpms --state off
+    on-resume = hyprctl dispatch dpms on; pc-dashboard-server trigger dpms --state on
+}
+```
+
+Requirements:
+
+*   **Same user as the daemon.** The command socket is only accessible to its owner (mode `0600`).
+*   **Same socket path.** Both sides default to `$XDG_RUNTIME_DIR/pc-dashboard-server.sock`. Hooks started from your graphical session have `XDG_RUNTIME_DIR` set; otherwise, or if `daemon.socket_path` is customised, pass `--socket <path>`.
+*   **ADB control enabled.** With `adb.no_app_control` set, the state is still broadcast to clients, but the device screen is not touched.
+
+The daemon also caches the last state and sends it to clients when they connect, so a device reconnected while the monitors are off is told they are off. On GNOME, calling the hook as well is harmless: the device just receives the same command twice.
 
 ---
 
